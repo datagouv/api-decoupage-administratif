@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+app/__pycache__/
+.ipynb_checkpoints/
+*.py[cod]
+*$py.class
+*.ipynb
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+data/
+sources/
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+.postgis_data/

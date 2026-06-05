@@ -1,0 +1,7 @@
+# Dépendances runtime pour l'API (sans outils de chargement géo)
+sqlalchemy>=2.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+shapely>=2.0.0
+pyproj>=3.0.0

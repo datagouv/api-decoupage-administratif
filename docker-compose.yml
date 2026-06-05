@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    container_name: apigeo2_api
+    environment:
+      DB_FILE: /app/data/apigeo.db
+    ports:
+      - "8000:8000"
+    volumes:
+      # Base SQLite préparée en local (5_load_into_spatialite.py)
+      - ./data/apigeo.db:/app/data/apigeo.db:ro
+      # Décommenter pour le dev hot-reload :
+      # - ./app:/app/app
+    restart: unless-stopped

@@ -1,0 +1,21 @@
+.git
+.gitignore
+__pycache__
+**/__pycache__
+*.pyc
+.ipynb_checkpoints
+.env
+.venv
+venv
+env
+
+# Données sources / géométries lourdes (monter data/apigeo.db via volume)
+data/**/*.geojson
+data/**/*.csv
+data/**/*.shp
+data/**/*.gpkg
+
+# Docs et notebooks
+*.md
+Untitled.ipynb
+.postgis_data
