@@ -33,7 +33,7 @@ BANATIC_SIREN_URL = "https://www.data.gouv.fr/api/1/datasets/r/5d3cfdd0-00de-43f
 BANATIC_INTERCO_URL = "https://www.data.gouv.fr/api/1/datasets/r/6e05c448-62cc-4470-aa0f-4f31adea0bc4"
 LAPOSTE_URL = "https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/data-files/019HexaSmal.csv"
 INTERCO_LIST_URL = "https://www.data.gouv.fr/api/1/datasets/r/25571b3e-a5ce-4567-bfb4-650504644d7b"
-INTERCO_MEMBERS_URL = "https://www.data.gouv.fr/api/1/datasets/r/348cc004-22b4-4b12-9281-b00d4ccb1d88"
+INTERCO_MEMBERS_URL = "https://www.banatic.interieur.gouv.fr/consultation/api/export/pregenere/telecharger/France"
 MAIRIES_GEOJSON_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2026/geojson/mairies.geojson.gz"
 
 # Directories
