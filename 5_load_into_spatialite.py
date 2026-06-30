@@ -329,6 +329,102 @@ def load_commune_geometries(engine):
     
     return gdf
 
+def ensure_admin_geometry_tables(engine) -> None:
+    """Crée les tables de géométries admin si absentes (évite des vues SQL cassées)."""
+    specs = (
+        ("departements_geometries", "dep"),
+        ("regions_geometries", "reg"),
+    )
+    with engine.connect() as conn:
+        for table, code_col in specs:
+            exists = conn.execute(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:t"),
+                {"t": table},
+            ).fetchone()
+            if exists:
+                continue
+            print(f"  Creating empty table {table}...")
+            conn.execute(
+                text(f"""
+                    CREATE TABLE {table} (
+                        {code_col} TEXT PRIMARY KEY,
+                        nom TEXT,
+                        geometry TEXT,
+                        geometry_geojson TEXT
+                    )
+                """)
+            )
+        conn.commit()
+
+
+def load_geometry_table_from_geojson(
+    engine,
+    *,
+    geojson_path: str,
+    table_name: str,
+    code_column: str,
+    label: str,
+) -> bool:
+    """Charge WKT + GeoJSON pré-calculé dans une table admin (départements/régions)."""
+    ensure_admin_geometry_tables(engine)
+
+    if not os.path.exists(geojson_path):
+        print(f"⚠️  File not found: {geojson_path}")
+        print("  Run scripts 3 and 4 first to generate and simplify GeoJSON files")
+        return False
+
+    print(f"\n  Loading {label} geometries from {geojson_path}...")
+    gdf = gpd.read_file(geojson_path)
+    print(f"✓ Loaded {len(gdf)} {label} with geometries")
+
+    gdf.columns = [col.lower() if col != "geometry" else col for col in gdf.columns]
+    if gdf.crs and gdf.crs.to_epsg() != 4326:
+        print(f"  Converting CRS from {gdf.crs} to EPSG:4326...")
+        gdf = gdf.to_crs(epsg=4326)
+
+    with engine.connect() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+        conn.commit()
+        conn.execute(
+            text(f"""
+                CREATE TABLE {table_name} (
+                    {code_column} TEXT PRIMARY KEY,
+                    nom TEXT,
+                    geometry TEXT,
+                    geometry_geojson TEXT
+                )
+            """)
+        )
+        conn.commit()
+
+        print(f"  Converting {label} geometries to WKT and GeoJSON...")
+        for _, row in gdf.iterrows():
+            code = row.get(code_column)
+            nom = row.get("nom") or row.get("libelle")
+            geom = row["geometry"]
+            if geom and code:
+                try:
+                    conn.execute(
+                        text(f"""
+                            INSERT INTO {table_name} ({code_column}, nom, geometry, geometry_geojson)
+                            VALUES (:code, :nom, :geometry, :geojson)
+                        """),
+                        {
+                            "code": code,
+                            "nom": nom,
+                            "geometry": geom.wkt,
+                            "geojson": json.dumps(mapping(geom)),
+                        },
+                    )
+                except Exception as e:
+                    print(f"    ⚠️  Error loading {code}: {e}")
+
+        conn.commit()
+        count = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        print(f"✓ Loaded {count} {label} geometries from simplified GeoJSON")
+    return True
+
+
 def load_departements(engine):
     """Load departements metadata and geometries from simplified GeoJSON"""
     print(f"\nLoading departements data...")
@@ -357,75 +453,15 @@ def load_departements(engine):
     df_dept.to_sql(table_name, engine, if_exists='replace', index=False)
     print(f"✓ Metadata loaded into table '{table_name}'")
     
-    # Load departements geometries from simplified GeoJSON
-    if not os.path.exists(DEPARTEMENTS_GEOJSON):
-        print(f"⚠️  File not found: {DEPARTEMENTS_GEOJSON}")
-        print(f"  Please run scripts 3 and 4 first to generate and simplify GeoJSON files")
-        return None
-    
-    print(f"\n  Loading departements geometries from {DEPARTEMENTS_GEOJSON} (10m precision)...")
-    gdf_dept = gpd.read_file(DEPARTEMENTS_GEOJSON)
-    print(f"✓ Loaded {len(gdf_dept)} departements with geometries")
-    
-    # Rename columns to lowercase
-    gdf_dept.columns = [col.lower() if col != 'geometry' else col for col in gdf_dept.columns]
-    
-    # Convert to WGS84 if needed
-    if gdf_dept.crs and gdf_dept.crs.to_epsg() != 4326:
-        print(f"  Converting CRS from {gdf_dept.crs} to EPSG:4326...")
-        gdf_dept = gdf_dept.to_crs(epsg=4326)
-    
-    # Create departements_geometries table
-    print(f"\n  Creating departements_geometries table...")
-    
-    with engine.connect() as conn:
-        # Drop table if exists
-        conn.execute(text("DROP TABLE IF EXISTS departements_geometries"))
-        conn.commit()
-        
-        # Create table
-        conn.execute(text("""
-            CREATE TABLE departements_geometries (
-                dep TEXT PRIMARY KEY,
-                nom TEXT,
-                geometry TEXT,
-                geometry_geojson TEXT
-            )
-        """))
-        conn.commit()
+    load_geometry_table_from_geojson(
+        engine,
+        geojson_path=DEPARTEMENTS_GEOJSON,
+        table_name="departements_geometries",
+        code_column="dep",
+        label="departements",
+    )
 
-        print("  Converting geometries to WKT and GeoJSON...")
-        for idx, row in gdf_dept.iterrows():
-            dep_code = row.get('dep')
-            nom = row.get('nom') or row.get('libelle')
-            geom = row['geometry']
-            
-            if geom and dep_code:
-                geom_wkt = geom.wkt
-                geojson_str = json.dumps(mapping(geom))
-                
-                # Insert into database
-                try:
-                    conn.execute(text("""
-                        INSERT INTO departements_geometries (dep, nom, geometry, geometry_geojson)
-                        VALUES (:dep, :nom, :geometry, :geojson)
-                    """), {
-                        'dep': dep_code,
-                        'nom': nom,
-                        'geometry': geom_wkt,
-                        'geojson': geojson_str
-                    })
-                except Exception as e:
-                    print(f"    ⚠️  Error loading {dep_code}: {e}")
-        
-        conn.commit()
-
-        result = conn.execute(text("SELECT COUNT(*) FROM departements_geometries"))
-        count = result.scalar()
-        print(f"✓ Loaded {count} departement geometries from simplified GeoJSON")
-        print(f"  ✓ GeoJSON pre-computed during loading")
-    
-    print(f"✓ Departements data loaded successfully")
+    print("✓ Departements data loaded successfully")
     return df_dept
 
 def load_regions(engine):
@@ -456,75 +492,15 @@ def load_regions(engine):
     df_reg.to_sql(table_name, engine, if_exists='replace', index=False)
     print(f"✓ Metadata loaded into table '{table_name}'")
     
-    # Load regions geometries from simplified GeoJSON
-    if not os.path.exists(REGIONS_GEOJSON):
-        print(f"⚠️  File not found: {REGIONS_GEOJSON}")
-        print(f"  Please run scripts 3 and 4 first to generate and simplify GeoJSON files")
-        return None
-    
-    print(f"\n  Loading regions geometries from {REGIONS_GEOJSON} (10m precision)...")
-    gdf_reg = gpd.read_file(REGIONS_GEOJSON)
-    print(f"✓ Loaded {len(gdf_reg)} regions with geometries")
-    
-    # Rename columns to lowercase
-    gdf_reg.columns = [col.lower() if col != 'geometry' else col for col in gdf_reg.columns]
-    
-    # Convert to WGS84 if needed
-    if gdf_reg.crs and gdf_reg.crs.to_epsg() != 4326:
-        print(f"  Converting CRS from {gdf_reg.crs} to EPSG:4326...")
-        gdf_reg = gdf_reg.to_crs(epsg=4326)
-    
-    # Create regions_geometries table
-    print(f"\n  Creating regions_geometries table...")
-    
-    with engine.connect() as conn:
-        # Drop table if exists
-        conn.execute(text("DROP TABLE IF EXISTS regions_geometries"))
-        conn.commit()
-        
-        # Create table
-        conn.execute(text("""
-            CREATE TABLE regions_geometries (
-                reg TEXT PRIMARY KEY,
-                nom TEXT,
-                geometry TEXT,
-                geometry_geojson TEXT
-            )
-        """))
-        conn.commit()
+    load_geometry_table_from_geojson(
+        engine,
+        geojson_path=REGIONS_GEOJSON,
+        table_name="regions_geometries",
+        code_column="reg",
+        label="regions",
+    )
 
-        print("  Converting geometries to WKT and GeoJSON...")
-        for idx, row in gdf_reg.iterrows():
-            reg_code = row.get('reg')
-            nom = row.get('nom') or row.get('libelle')
-            geom = row['geometry']
-            
-            if geom and reg_code:
-                geom_wkt = geom.wkt
-                geojson_str = json.dumps(mapping(geom))
-                
-                # Insert into database
-                try:
-                    conn.execute(text("""
-                        INSERT INTO regions_geometries (reg, nom, geometry, geometry_geojson)
-                        VALUES (:reg, :nom, :geometry, :geojson)
-                    """), {
-                        'reg': reg_code,
-                        'nom': nom,
-                        'geometry': geom_wkt,
-                        'geojson': geojson_str
-                    })
-                except Exception as e:
-                    print(f"    ⚠️  Error loading {reg_code}: {e}")
-        
-        conn.commit()
-
-        result = conn.execute(text("SELECT COUNT(*) FROM regions_geometries"))
-        count = result.scalar()
-        print(f"✓ Loaded {count} region geometries from simplified GeoJSON")
-        print(f"  ✓ GeoJSON pre-computed during loading")
-    
-    print(f"✓ Regions data loaded successfully")
+    print("✓ Regions data loaded successfully")
     return df_reg
 
 def load_interco(engine):
@@ -1297,7 +1273,8 @@ def create_view(engine):
 def create_departements_view(engine):
     """Create a view joining departements metadata and geometries"""
     print("\nCreating departements view...")
-    
+    ensure_admin_geometry_tables(engine)
+
     with engine.connect() as conn:
         conn.execute(text("DROP VIEW IF EXISTS departements"))
         
@@ -1328,7 +1305,8 @@ def create_departements_view(engine):
 def create_regions_view(engine):
     """Create a view joining regions metadata and geometries"""
     print("\nCreating regions view...")
-    
+    ensure_admin_geometry_tables(engine)
+
     with engine.connect() as conn:
         conn.execute(text("DROP VIEW IF EXISTS regions"))
         
@@ -1571,9 +1549,49 @@ def migrate_bbox_only():
     print("\n✓ Migration bbox terminée. Redémarrez l'API si elle tourne déjà.")
 
 
+def migrate_admin_geometries():
+    """Répare ou recharge les géométries départements/régions sur une base existante."""
+    print("=" * 60)
+    print("MIGRATE ADMIN GEOMETRIES (départements + régions)")
+    print("=" * 60)
+    engine = create_database_connection()
+    ensure_admin_geometry_tables(engine)
+
+    dept_ok = load_geometry_table_from_geojson(
+        engine,
+        geojson_path=DEPARTEMENTS_GEOJSON,
+        table_name="departements_geometries",
+        code_column="dep",
+        label="departements",
+    )
+    reg_ok = load_geometry_table_from_geojson(
+        engine,
+        geojson_path=REGIONS_GEOJSON,
+        table_name="regions_geometries",
+        code_column="reg",
+        label="regions",
+    )
+
+    create_departements_view(engine)
+    create_regions_view(engine)
+
+    if not dept_ok and not reg_ok:
+        print(
+            "\n⚠️  Tables vides créées : l'API répond à nouveau, "
+            "mais sans géométries tant que les GeoJSON ne sont pas générés."
+        )
+        print("  python3 3_convert_shape_into_geojson.py --aggregate-only")
+        print("  python3 4_simplify_geojson.py")
+        print("  python3 5_load_into_spatialite.py --migrate-admin-geometries")
+    else:
+        print("\n✓ Migration admin geometries terminée.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--migrate-bbox":
         migrate_bbox_only()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--migrate-admin-geometries":
+        migrate_admin_geometries()
     else:
         main()
 

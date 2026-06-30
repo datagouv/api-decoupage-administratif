@@ -3,22 +3,21 @@
 Script pour télécharger et préparer les sources de données administratives.
 """
 import sys
-import shutil
 import tempfile
 from pathlib import Path
+import geopandas as gpd
 import requests
 import py7zr
 import zipfile
-from typing import Optional
 
 
 # Configuration des sources
 SOURCES_PATH = Path(__file__).parent / "sources"
 
-ADMIN_EXPRESS_BASE_URL = "https://data.geopf.fr/telechargement/download/ADMIN-EXPRESS-COG/ADMIN-EXPRESS-COG_3-2__SHP_WGS84G_FRA_2025-04-02/"
-ADMIN_EXPRESS_FILE = "ADMIN-EXPRESS-COG_3-2__SHP_WGS84G_FRA_2025-04-02.7z"
+ADMIN_EXPRESS_BASE_URL = "https://data.geopf.fr/telechargement/download/ADMIN-EXPRESS/ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19/"
+ADMIN_EXPRESS_FILE = "ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19.7z"
 
-OSM_COMMUNES_COM_BASE_URL = "http://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2022/shp/"
+OSM_COMMUNES_COM_BASE_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2022/shp/"
 OSM_COMMUNES_COM_FILE = "communes-com-20220101-shp.zip"
 
 
@@ -87,13 +86,13 @@ def decompress_admin_express_files() -> None:
     print("Decompressing ADMIN EXPRESS archive…")
     
     archive_path = get_source_file_path(ADMIN_EXPRESS_FILE)
-    
+
     # Patterns des fichiers à extraire
-    patterns = [
-        'COMMUNE.',
-        'COMMUNE_ASSOCIEE_OU_DELEGUEE.',
-        'ARRONDISSEMENT_MUNICIPAL.'
-    ]
+    patterns = {
+        'commune': {'cleabs': 'ID', 'nom_officiel': 'NOM', 'nom_officiel_en_majuscules': 'NOM_M', 'code_insee': 'INSEE_COM', 'statut': 'STATUT', 'population': 'POPULATION', 'code_insee_du_canton': 'INSEE_CAN', 'code_insee_de_l_arrondissement': 'INSEE_ARR', 'code_insee_du_departement': 'INSEE_DEP', 'code_insee_de_la_region': 'INSEE_REG', 'codes_siren_des_epci': 'SIREN_EPCI'},
+        'commune_associee_ou_deleguee': {'cleabs':'ID', 'nom_officiel':'NOM', 'nom_officiel_en_majuscules':'NOM_M', 'code_insee':'INSEE_CAD', 'code_insee_de_la_commune_de_rattach':'INSEE_COM', 'nature':'NATURE', 'population':'POPULATION'},
+        'arrondissement_municipal': {'cleabs': 'ID', 'nom_officiel': 'NOM', 'nom_officiel_en_majuscules': 'NOM_M', 'code_insee': 'INSEE_ARM', 'code_insee_de_la_commune_de_rattach': 'INSEE_COM', 'population': 'POPULATION'}
+    }
     
     try:
         with py7zr.SevenZipFile(archive_path, mode='r') as archive:
@@ -104,25 +103,21 @@ def decompress_admin_express_files() -> None:
             for file_name in all_files:
                 # Vérifier si le nom de fichier (sans le chemin) correspond aux patterns
                 base_name = Path(file_name).name
-                if any(pattern in base_name for pattern in patterns):
+                if '.gpkg' in base_name:
                     files_to_extract.append(file_name)
             
-            if files_to_extract:
+            if len(files_to_extract) > 0:
                 print(f"Extracting {len(files_to_extract)} files…")
                 # Extraire dans un dossier temporaire
                 with tempfile.TemporaryDirectory() as temp_dir:
                     archive.extract(targets=files_to_extract, path=temp_dir)
-                    
-                    # Déplacer les fichiers extraits vers SOURCES_PATH en "aplatissant" la structure
-                    temp_path = Path(temp_dir)
-                    for extracted_file in files_to_extract:
-                        source_file = temp_path / extracted_file
-                        if source_file.exists():
-                            # Prendre uniquement le nom du fichier, pas le chemin complet
-                            dest_file = SOURCES_PATH / source_file.name
-                            # Copier le fichier
-                            shutil.copy2(source_file, dest_file)
-                            print(f"  → {source_file.name}")
+                    list_layers = gpd.list_layers(Path(temp_dir) / files_to_extract[0])['name']
+                    layers_gpkg = list_layers[list_layers.isin(patterns.keys())]
+                    for layer in layers_gpkg.to_list():
+                        gdf = gpd.read_file(Path(temp_dir) / files_to_extract[0], layer=layer).rename(columns=patterns[layer])
+                        file_name_dest = layer.upper() + '.shp'
+                        dest_file = SOURCES_PATH / file_name_dest
+                        gdf.to_file(dest_file)
                 
                 print("✓ ADMIN EXPRESS archive decompressed successfully")
             else:
