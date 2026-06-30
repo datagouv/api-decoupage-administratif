@@ -61,6 +61,10 @@ class DepartementResponseSchema(BaseModel):
     codeChefLieu: Optional[str] = Field(None, description="Code INSEE de la commune chef-lieu")
     nomEnrichi: Optional[str] = Field(None, description="Nom enrichi")
     nomMajuscules: Optional[str] = Field(None, description="Nom en majuscules")
+    surface: Optional[float] = Field(None, description="Surface en hectares")
+    contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
+    centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
+    bbox: Optional[Dict[str, Any]] = Field(None, description="Bounding box GeoJSON (Polygon)")
 
 
 class RegionResponseSchema(BaseModel):
@@ -76,6 +80,10 @@ class RegionResponseSchema(BaseModel):
     codeChefLieu: Optional[str] = Field(None, description="Code INSEE de la commune chef-lieu")
     nomEnrichi: Optional[str] = Field(None, description="Nom enrichi")
     nomMajuscules: Optional[str] = Field(None, description="Nom en majuscules")
+    surface: Optional[float] = Field(None, description="Surface en hectares")
+    contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
+    centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
+    bbox: Optional[Dict[str, Any]] = Field(None, description="Bounding box GeoJSON (Polygon)")
 
 
 class EpciResponseSchema(BaseModel):

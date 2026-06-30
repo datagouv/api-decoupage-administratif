@@ -10,7 +10,11 @@ from fastapi import HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.entities.geometry import parse_geometry
+from app.entities.geometry import (
+    GEOMETRY_RESPONSE_FIELDS,
+    apply_geometry_response_fields,
+    parse_geometry,
+)
 
 from app.nom_search import (
     NOM_SEARCH_CANDIDATE_LIMIT,
@@ -28,6 +32,10 @@ REGION_API_TO_SQL = {
     "codeChefLieu": "code_chef_lieu",
     "nomEnrichi": "nom_enrichi",
     "nomMajuscules": "nom_majuscules",
+    "contour": "geometry_geojson",
+    "centre": "geometry_geojson",
+    "bbox": "geometry_geojson",
+    "surface": "geometry_geojson",
 }
 REGION_SQL_TO_API = {v: k for k, v in REGION_API_TO_SQL.items()}
 
@@ -60,6 +68,10 @@ def resolve_region_field_lists(fields: Optional[str]):
         sql_col = REGION_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
+    if any(
+        field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS
+    ) and "geometry_geojson" not in list_properties:
+        list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
 
@@ -71,10 +83,17 @@ def build_region_properties(
 ) -> dict:
     properties = {}
     for i, column_name in enumerate(list_properties):
+        if column_name in ("geometry_geojson", "nom_recherche"):
+            continue
         api_field = REGION_SQL_TO_API.get(column_name)
         if not api_field:
             continue
         properties[api_field] = row[i]
+
+    geom_raw = None
+    if "geometry_geojson" in list_properties:
+        geom_raw = row[list_properties.index("geometry_geojson")]
+    apply_geometry_response_fields(properties, geom_raw, requested_fields)
 
     if fields:
         allowed = {"nom", "code"} | set(requested_fields)
@@ -190,15 +209,14 @@ def get_region_entity_by_code(
             detail=f"Région avec le code {code} non trouvée",
         )
 
+    row_by_column = {col: result[i] for i, col in enumerate(query_columns)}
+    row = tuple(row_by_column[col] for col in list_properties)
+    geom_raw = row_by_column.get("geometry_geojson")
+    properties = build_region_properties(
+        row, list_properties, requested_fields, fields
+    )
+
     if format == "geojson":
-        row = result
-        geom_raw = None
-        if len(query_columns) > len(list_properties):
-            geom_raw = row[len(list_properties)]
-            row = row[: len(list_properties)]
-        properties = build_region_properties(
-            row, list_properties, requested_fields, fields
-        )
         geometry = parse_geometry(geom_raw) if geom_raw else None
         return {
             "type": "Feature",
@@ -206,12 +224,15 @@ def get_region_entity_by_code(
             "geometry": geometry,
         }
 
-    return build_region_properties(result, list_properties, requested_fields, fields)
+    return properties
 
 
 REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
-    "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
+    "fields": Query(
+        None,
+        description="Champs à inclure (centre, contour, bbox, surface, codeChefLieu, …)",
+    ),
     "limit": Query(100, ge=1, le=1000, description="Nombre maximum de résultats"),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

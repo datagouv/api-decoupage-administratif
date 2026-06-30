@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import Optional, Sequence
 
 from pyproj import Geod
 from shapely import wkt
 from shapely.geometry import mapping, shape
+
+GEOMETRY_RESPONSE_FIELDS = frozenset({"contour", "centre", "bbox", "surface"})
 
 _GEOD = Geod(ellps="WGS84")
 
@@ -67,6 +69,55 @@ def resolve_lat_lon_point(
     if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
         return None
     return lon_f, lat_f
+
+
+def centre_geojson_from_shape(geom_shape) -> Optional[dict]:
+    if geom_shape is None or geom_shape.is_empty:
+        return None
+    return {
+        "type": "Point",
+        "coordinates": [geom_shape.centroid.x, geom_shape.centroid.y],
+    }
+
+
+def bbox_geojson_from_shape(geom_shape) -> Optional[dict]:
+    if geom_shape is None or geom_shape.is_empty:
+        return None
+    minx, miny, maxx, maxy = geom_shape.bounds
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [minx, miny],
+                [maxx, miny],
+                [maxx, maxy],
+                [minx, maxy],
+                [minx, miny],
+            ]
+        ],
+    }
+
+
+def apply_geometry_response_fields(
+    properties: dict,
+    geom_raw: Optional[str],
+    requested_fields: Sequence[str],
+) -> None:
+    """Renseigne contour, centre, bbox et surface à partir d'une géométrie stockée."""
+    if not geom_raw or not any(field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS):
+        return
+    geometry = parse_geometry(geom_raw)
+    if not geometry:
+        return
+    geom_shape = shape(geometry)
+    if "contour" in requested_fields:
+        properties["contour"] = geometry
+    if "centre" in requested_fields:
+        properties["centre"] = centre_geojson_from_shape(geom_shape)
+    if "bbox" in requested_fields:
+        properties["bbox"] = bbox_geojson_from_shape(geom_shape)
+    if "surface" in requested_fields:
+        properties["surface"] = compute_surface_hectares(geom_shape)
 
 
 def geometry_shape_from_column(geom_str: Optional[str]):
