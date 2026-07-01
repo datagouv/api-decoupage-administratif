@@ -182,6 +182,7 @@ class CommuneGeoJSONResponse(BaseModel):
     properties: Dict[str, Any] = Field(..., description="Propriétés de la commune")
     geometry: Optional[Dict[str, Any]] = Field(None, description="Géométrie au format GeoJSON")
 
+
 class ErrorResponse(BaseModel):
     """Schema for error responses"""
     detail: str = Field(..., description="Message d'erreur")

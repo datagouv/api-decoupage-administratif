@@ -10,8 +10,7 @@ from sqlalchemy import text
 from dataclasses import dataclass
 from typing import Callable, List, Literal, Optional, Union
 import json
-from shapely import wkt
-from shapely.geometry import mapping, shape, Point
+from shapely.geometry import shape, Point
 from pyproj import Geod
 
 _GEOD = Geod(ellps="WGS84")
@@ -75,23 +74,15 @@ from app.schemas import (
 # Helper function to parse geometry
 def parse_geometry(geom_str):
     """
-    Parse geometry from either GeoJSON or WKT format
-    Returns a GeoJSON geometry dict or None
+    Parse geometry from GeoJSON string.
+    Returns a GeoJSON geometry dict or None.
     """
     if not geom_str:
         return None
-    
-    # Try to parse as JSON first (GeoJSON)
+
     try:
         return json.loads(geom_str)
-    except (json.JSONDecodeError, ValueError):
-        pass
-    
-    # Try to parse as WKT
-    try:
-        geom = wkt.loads(geom_str)
-        return mapping(geom)
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError):
         return None
 
 
@@ -132,12 +123,11 @@ def resolve_lat_lon_point(
 
 def geometry_shape_from_column(geom_str: Optional[str]):
     """Géométrie Shapely pour tests de distance / appartenance."""
-    if not geom_str:
+    geometry = parse_geometry(geom_str)
+    if not geometry:
         return None
     try:
-        if isinstance(geom_str, str) and geom_str.strip().startswith("{"):
-            return shape(json.loads(geom_str))
-        return wkt.loads(geom_str)
+        return shape(geometry)
     except Exception:
         return None
 
@@ -151,17 +141,10 @@ def pick_nearest_commune_row(
     """Parmi les lignes candidates, retourne celle dont le contour est le plus proche du point."""
     if not rows:
         return None
-    geom_col = (
-        "geometry_geojson"
-        if "geometry_geojson" in list_properties
-        else "geometry"
-        if "geometry" in list_properties
-        else None
-    )
-    if geom_col is None:
+    if "geometry_geojson" not in list_properties:
         return rows[0]
 
-    geom_idx = list_properties.index(geom_col)
+    geom_idx = list_properties.index("geometry_geojson")
     pt = Point(lon, lat)
     best_row = None
     best_dist = float("inf")
@@ -205,7 +188,7 @@ def locate_commune_at_point(
     query = f"""
         SELECT {list_properties_sql}
         FROM communes
-        WHERE geometry IS NOT NULL
+        WHERE geometry_geojson IS NOT NULL
     """
     params: dict = {}
     query += config.type_filter_sql(params)
@@ -240,7 +223,7 @@ def locate_commune_at_point(
         fallback_query = f"""
             SELECT {list_properties_sql}
             FROM communes
-            WHERE geometry IS NOT NULL
+            WHERE geometry_geojson IS NOT NULL
               AND min_lon IS NOT NULL
         """
         fallback_query += config.type_filter_sql(params)
@@ -669,9 +652,9 @@ def resolve_commune_field_lists(
     return list_properties, requested_fields, True
 
 
-def commune_centre_geometry(geom_wkt_or_geojson: Optional[str]):
+def commune_centre_geometry(geom_geojson: Optional[str]):
     """Point GeoJSON du centroïde à partir d'une géométrie stockée en base."""
-    raw_geom = parse_geometry(geom_wkt_or_geojson)
+    raw_geom = parse_geometry(geom_geojson)
     if not raw_geom:
         return None
     geom_shape = shape(raw_geom)
@@ -2010,7 +1993,7 @@ async def get_statistics(db: Session = Depends(get_db)):
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT code_departement) as total_departements,
                 COUNT(DISTINCT code_region) as total_regions,
-                COUNT(CASE WHEN geometry IS NOT NULL THEN 1 END) as entities_avec_geometrie,
+                COUNT(CASE WHEN geometry_geojson IS NOT NULL THEN 1 END) as entities_avec_geometrie,
                 SUM(population) as population_totale,
                 SUM(superficie) as superficie_totale
             FROM communes

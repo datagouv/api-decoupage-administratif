@@ -6,33 +6,24 @@ import json
 from typing import Optional, Sequence
 
 from pyproj import Geod
-from shapely import wkt
-from shapely.geometry import mapping, shape
+from shapely.geometry import shape
 
 GEOMETRY_RESPONSE_FIELDS = frozenset({"contour", "centre", "bbox", "surface"})
 
 _GEOD = Geod(ellps="WGS84")
 
-# Helper function to parse geometry
+
 def parse_geometry(geom_str):
     """
-    Parse geometry from either GeoJSON or WKT format
-    Returns a GeoJSON geometry dict or None
+    Parse geometry from GeoJSON string.
+    Returns a GeoJSON geometry dict or None.
     """
     if not geom_str:
         return None
-    
-    # Try to parse as JSON first (GeoJSON)
+
     try:
         return json.loads(geom_str)
-    except (json.JSONDecodeError, ValueError):
-        pass
-    
-    # Try to parse as WKT
-    try:
-        geom = wkt.loads(geom_str)
-        return mapping(geom)
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError):
         return None
 
 
@@ -122,11 +113,10 @@ def apply_geometry_response_fields(
 
 def geometry_shape_from_column(geom_str: Optional[str]):
     """Géométrie Shapely pour tests de distance / appartenance."""
-    if not geom_str:
+    geometry = parse_geometry(geom_str)
+    if not geometry:
         return None
     try:
-        if isinstance(geom_str, str) and geom_str.strip().startswith("{"):
-            return shape(json.loads(geom_str))
-        return wkt.loads(geom_str)
+        return shape(geometry)
     except Exception:
         return None
