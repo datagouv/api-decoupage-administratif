@@ -40,10 +40,12 @@ REGIONS_CSV = os.path.join(DATA_DIR, "regions.csv")
 REGIONS_GEOJSON = os.path.join(DATA_DIR, "regions_5m.geojson")  # 10m precision
 INTERCO_CSV = os.path.join(DATA_DIR, "interco_enriched.csv")
 INTERCO_GEOJSON = os.path.join(DATA_DIR, "intercommunalites_5m.geojson")  # 10m precision
+INTERCO_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "intercommunalites.geojson")
 INTERCO_MEMBERS_CSV = os.path.join(DATA_DIR, "interco_members.csv")  # All commune-interco associations
 AOM_CSV = os.path.join(DATA_DIR, "aom.csv")
 AOM_COMMUNE_CSV = os.path.join(DATA_DIR, "aom_commune.csv")
 AOM_GEOJSON = os.path.join(DATA_DIR, "aom_5m.geojson")
+AOM_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "aom.geojson")
 SIREN_INSEE_MAPPING_CSV = os.path.join(DATA_DIR, "siren_insee_mapping.csv")
 MAIRIES_GEOJSON = os.path.join(DATA_DIR, "mairies.geojson.gz")
 
@@ -503,6 +505,77 @@ def load_regions(engine):
     print("✓ Regions data loaded successfully")
     return df_reg
 
+def _ensure_interco_geometries_table(conn):
+    """Create an empty interco_geometries table if it does not exist."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS interco_geometries (
+            siren TEXT PRIMARY KEY,
+            nom TEXT,
+            nb_communes INTEGER,
+            geometry TEXT,
+            geometry_geojson TEXT
+        )
+    """))
+    conn.commit()
+
+
+def _resolve_interco_geojson_path():
+    """Prefer simplified GeoJSON; fall back to full intercommunalites.geojson."""
+    if os.path.exists(INTERCO_GEOJSON):
+        return INTERCO_GEOJSON
+    if os.path.exists(INTERCO_GEOJSON_FALLBACK):
+        print(f"  ⚠️  {INTERCO_GEOJSON} not found, using {INTERCO_GEOJSON_FALLBACK}")
+        return INTERCO_GEOJSON_FALLBACK
+    return None
+
+
+def _load_interco_geometries_from_geojson(engine, geojson_path):
+    """Load intercommunalité geometries from a GeoJSON file into interco_geometries."""
+    print(f"\n  Loading intercommunalités geometries from {geojson_path}...")
+    gdf_interco = gpd.read_file(geojson_path)
+    print(f"✓ Loaded {len(gdf_interco)} intercommunalités with geometries")
+
+    gdf_interco.columns = [col.lower() if col != "geometry" else col for col in gdf_interco.columns]
+    if gdf_interco.crs and gdf_interco.crs.to_epsg() != 4326:
+        print(f"  Converting CRS from {gdf_interco.crs} to EPSG:4326...")
+        gdf_interco = gdf_interco.to_crs(epsg=4326)
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS interco_geometries"))
+        conn.commit()
+        _ensure_interco_geometries_table(conn)
+
+        print("  Converting geometries to WKT and GeoJSON...")
+        loaded = 0
+        for _, row in gdf_interco.iterrows():
+            siren = row.get("nn_siren") or row.get("siren")
+            nom = row.get("nom_du_groupement") or row.get("nom")
+            nb_communes = row.get("nb_communes")
+            geom = row["geometry"]
+            if geom is None or not siren:
+                continue
+            try:
+                conn.execute(
+                    text("""
+                        INSERT INTO interco_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
+                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
+                    """),
+                    {
+                        "siren": siren,
+                        "nom": nom,
+                        "nb_communes": int(nb_communes) if pd.notna(nb_communes) else None,
+                        "geometry": geom.wkt,
+                        "geojson": json.dumps(mapping(geom)),
+                    },
+                )
+                loaded += 1
+            except Exception as e:
+                print(f"    ⚠️  Error loading {siren}: {e}")
+        conn.commit()
+        print(f"✓ Loaded {loaded} intercommunalité geometries from GeoJSON")
+        print("  ✓ GeoJSON pre-computed during loading")
+
+
 def load_interco(engine):
     """Load intercommunalité metadata and geometries from simplified GeoJSON"""
     print(f"\nLoading intercommunalités data...")
@@ -530,81 +603,89 @@ def load_interco(engine):
     table_name = "interco_metadata"
     df_interco.to_sql(table_name, engine, if_exists='replace', index=False)
     print(f"✓ Metadata loaded into table '{table_name}'")
-    
-    # Load intercommunalités geometries from simplified GeoJSON
-    if not os.path.exists(INTERCO_GEOJSON):
+
+    geojson_path = _resolve_interco_geojson_path()
+    if geojson_path is None:
         print(f"⚠️  File not found: {INTERCO_GEOJSON}")
-        print(f"  Please run scripts 3 and 4 first to generate and simplify GeoJSON files")
-        return None
-    
-    print(f"\n  Loading intercommunalités geometries from {INTERCO_GEOJSON} (10m precision)...")
-    gdf_interco = gpd.read_file(INTERCO_GEOJSON)
-    print(f"✓ Loaded {len(gdf_interco)} intercommunalités with geometries")
-    
-    # Rename columns to lowercase
-    gdf_interco.columns = [col.lower() if col != 'geometry' else col for col in gdf_interco.columns]
-    
-    # Convert to WGS84 if needed
-    if gdf_interco.crs and gdf_interco.crs.to_epsg() != 4326:
-        print(f"  Converting CRS from {gdf_interco.crs} to EPSG:4326...")
-        gdf_interco = gdf_interco.to_crs(epsg=4326)
-    
-    # Create interco_geometries table
-    print(f"\n  Creating interco_geometries table...")
-    
-    with engine.connect() as conn:
-        # Drop table if exists
-        conn.execute(text("DROP TABLE IF EXISTS interco_geometries"))
-        conn.commit()
-        
-        # Create table
-        conn.execute(text("""
-            CREATE TABLE interco_geometries (
-                siren TEXT PRIMARY KEY,
-                nom TEXT,
-                nb_communes INTEGER,
-                geometry TEXT,
-                geometry_geojson TEXT
-            )
-        """))
-        conn.commit()
+        print("  Please run scripts 3 and 4 first to generate and simplify GeoJSON files")
+        with engine.connect() as conn:
+            _ensure_interco_geometries_table(conn)
+        print("✓ Empty interco_geometries table created (metadata-only mode)")
+        return df_interco
 
-        print("  Converting geometries to WKT and GeoJSON...")
-        for idx, row in gdf_interco.iterrows():
-            # Try different possible column names for SIREN
-            siren = row.get('nn_siren') or row.get('siren')
-            nom = row.get('nom_du_groupement') or row.get('nom')
-            nb_communes = row.get('nb_communes')
-            geom = row['geometry']
-            
-            if geom and siren:
-                geom_wkt = geom.wkt
-                geojson_str = json.dumps(mapping(geom))
-                
-                # Insert into database
-                try:
-                    conn.execute(text("""
-                        INSERT INTO interco_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
-                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
-                    """), {
-                        'siren': siren,
-                        'nom': nom,
-                        'nb_communes': nb_communes if nb_communes else None,
-                        'geometry': geom_wkt,
-                        'geojson': geojson_str
-                    })
-                except Exception as e:
-                    print(f"    ⚠️  Error loading {siren}: {e}")
-        
-        conn.commit()
-
-        result = conn.execute(text("SELECT COUNT(*) FROM interco_geometries"))
-        count = result.scalar()
-        print(f"✓ Loaded {count} intercommunalité geometries from simplified GeoJSON")
-        print(f"  ✓ GeoJSON pre-computed during loading")
-    
+    _load_interco_geometries_from_geojson(engine, geojson_path)
     print(f"✓ Intercommunalités data loaded successfully")
     return df_interco
+
+
+def _ensure_aom_geometries_table(conn):
+    """Create an empty aom_geometries table if it does not exist."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS aom_geometries (
+            siren TEXT PRIMARY KEY,
+            nom TEXT,
+            nb_communes INTEGER,
+            geometry TEXT,
+            geometry_geojson TEXT
+        )
+    """))
+    conn.commit()
+
+
+def _resolve_aom_geojson_path():
+    """Prefer simplified GeoJSON; fall back to full aom.geojson."""
+    if os.path.exists(AOM_GEOJSON):
+        return AOM_GEOJSON
+    if os.path.exists(AOM_GEOJSON_FALLBACK):
+        print(f"  ⚠️  {AOM_GEOJSON} not found, using {AOM_GEOJSON_FALLBACK}")
+        return AOM_GEOJSON_FALLBACK
+    return None
+
+
+def _load_aom_geometries_from_geojson(engine, geojson_path):
+    """Load AOM geometries from a GeoJSON file into aom_geometries."""
+    print(f"\n  Loading AOM geometries from {geojson_path}...")
+    gdf_aom = gpd.read_file(geojson_path)
+    print(f"✓ Loaded {len(gdf_aom)} AOM with geometries")
+
+    gdf_aom.columns = [col.lower() if col != "geometry" else col for col in gdf_aom.columns]
+    if gdf_aom.crs and gdf_aom.crs.to_epsg() != 4326:
+        print(f"  Converting CRS from {gdf_aom.crs} to EPSG:4326...")
+        gdf_aom = gdf_aom.to_crs(epsg=4326)
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS aom_geometries"))
+        conn.commit()
+        _ensure_aom_geometries_table(conn)
+
+        print("  Converting geometries to WKT and GeoJSON...")
+        loaded = 0
+        for _, row in gdf_aom.iterrows():
+            siren = row.get("siren")
+            nom = row.get("nom")
+            nb_communes = row.get("nb_communes")
+            geom = row["geometry"]
+            if geom is None or not siren:
+                continue
+            try:
+                conn.execute(
+                    text("""
+                        INSERT INTO aom_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
+                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
+                    """),
+                    {
+                        "siren": siren,
+                        "nom": nom,
+                        "nb_communes": int(nb_communes) if pd.notna(nb_communes) else None,
+                        "geometry": geom.wkt,
+                        "geojson": json.dumps(mapping(geom)),
+                    },
+                )
+                loaded += 1
+            except Exception as e:
+                print(f"    ⚠️  Error loading AOM {siren}: {e}")
+        conn.commit()
+        print(f"✓ Loaded {loaded} AOM geometries from GeoJSON")
 
 
 def load_aom(engine):
@@ -674,63 +755,16 @@ def load_aom(engine):
     df_aom.to_sql("aom_metadata", engine, if_exists="replace", index=False)
     print("✓ Metadata loaded into table 'aom_metadata'")
 
-    if not os.path.exists(AOM_GEOJSON):
+    geojson_path = _resolve_aom_geojson_path()
+    if geojson_path is None:
         print(f"⚠️  File not found: {AOM_GEOJSON}")
         print("  Please run scripts 3 and 4 first to generate and simplify aom.geojson")
+        with engine.connect() as conn:
+            _ensure_aom_geometries_table(conn)
+        print("✓ Empty aom_geometries table created (metadata-only mode)")
         return df_aom
 
-    print(f"\n  Loading AOM geometries from {AOM_GEOJSON}...")
-    gdf_aom = gpd.read_file(AOM_GEOJSON)
-    print(f"✓ Loaded {len(gdf_aom)} AOM with geometries")
-
-    gdf_aom.columns = [col.lower() if col != "geometry" else col for col in gdf_aom.columns]
-    if gdf_aom.crs and gdf_aom.crs.to_epsg() != 4326:
-        print(f"  Converting CRS from {gdf_aom.crs} to EPSG:4326...")
-        gdf_aom = gdf_aom.to_crs(epsg=4326)
-
-    with engine.connect() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS aom_geometries"))
-        conn.commit()
-        conn.execute(text("""
-            CREATE TABLE aom_geometries (
-                siren TEXT PRIMARY KEY,
-                nom TEXT,
-                nb_communes INTEGER,
-                geometry TEXT,
-                geometry_geojson TEXT
-            )
-        """))
-        conn.commit()
-
-        print("  Converting geometries to WKT and GeoJSON...")
-        loaded = 0
-        for _, row in gdf_aom.iterrows():
-            siren = row.get("siren")
-            nom = row.get("nom")
-            nb_communes = row.get("nb_communes")
-            geom = row["geometry"]
-            if geom is None or not siren:
-                continue
-            try:
-                conn.execute(
-                    text("""
-                        INSERT INTO aom_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
-                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
-                    """),
-                    {
-                        "siren": siren,
-                        "nom": nom,
-                        "nb_communes": int(nb_communes) if pd.notna(nb_communes) else None,
-                        "geometry": geom.wkt,
-                        "geojson": json.dumps(mapping(geom)),
-                    },
-                )
-                loaded += 1
-            except Exception as e:
-                print(f"    ⚠️  Error loading AOM {siren}: {e}")
-        conn.commit()
-        print(f"✓ Loaded {loaded} AOM geometries from simplified GeoJSON")
-
+    _load_aom_geometries_from_geojson(engine, geojson_path)
     print("✓ AOM data loaded successfully")
     return df_aom
 
@@ -1338,6 +1372,7 @@ def create_interco_view(engine):
     print("\nCreating intercommunalités view...")
     
     with engine.connect() as conn:
+        _ensure_interco_geometries_table(conn)
         conn.execute(text("DROP VIEW IF EXISTS interco"))
         
         # Use pre-computed GeoJSON for better performance
@@ -1375,6 +1410,7 @@ def create_aom_view(engine):
     print("\nCreating AOM view...")
 
     with engine.connect() as conn:
+        _ensure_aom_geometries_table(conn)
         conn.execute(text("DROP VIEW IF EXISTS aom"))
         view_sql = """
             CREATE VIEW aom AS
@@ -1587,11 +1623,39 @@ def migrate_admin_geometries():
         print("\n✓ Migration admin geometries terminée.")
 
 
+def migrate_interco_geometries():
+    """Répare ou recharge les géométries intercommunalités sur une base existante."""
+    print("=" * 60)
+    print("MIGRATE INTERCO GEOMETRIES")
+    print("=" * 60)
+    engine = create_database_connection()
+
+    with engine.connect() as conn:
+        _ensure_interco_geometries_table(conn)
+
+    geojson_path = _resolve_interco_geojson_path()
+    if geojson_path is None:
+        print(
+            "\n⚠️  Table vide créée : l'API répond à nouveau, "
+            "mais sans géométries tant que les GeoJSON ne sont pas générés."
+        )
+        print("  python3 3_convert_shape_into_geojson.py --aggregate-only")
+        print("  python3 4_simplify_geojson.py")
+        print("  python3 5_load_into_spatialite.py --migrate-interco-geometries")
+    else:
+        _load_interco_geometries_from_geojson(engine, geojson_path)
+
+    create_interco_view(engine)
+    print("\n✓ Migration interco geometries terminée.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--migrate-bbox":
         migrate_bbox_only()
     elif len(sys.argv) > 1 and sys.argv[1] == "--migrate-admin-geometries":
         migrate_admin_geometries()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--migrate-interco-geometries":
+        migrate_interco_geometries()
     else:
         main()
 
