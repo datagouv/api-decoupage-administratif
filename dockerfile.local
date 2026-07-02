@@ -4,7 +4,6 @@ FROM python:3.11-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-c1v5 \
     libproj25 \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 ENV DB_FILE=/app/data/apigeo.db
@@ -17,11 +16,6 @@ COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY app ./app
-
-RUN mkdir -p /app/data && \
-    curl -fsSL -o /tmp/apigeo.db \
-    "https://www.data.gouv.fr/api/1/datasets/r/287ffd4b-9b48-44fc-853e-a5160d9452a7" && \
-    mv /tmp/apigeo.db /app/data/apigeo.db
 
 EXPOSE 8000
 

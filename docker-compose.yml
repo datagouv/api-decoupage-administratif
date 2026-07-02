@@ -1,6 +1,8 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: dockerfile.local
     container_name: apigeo2_api
     environment:
       DB_FILE: /app/data/apigeo.db
