@@ -24,6 +24,32 @@ SIMPLIFICATION_LEVELS = {
     "1000m": 0.009,      # ~1000 meters
 }
 
+def is_simplified_geojson(filename: str) -> bool:
+    """True si le fichier est déjà une variante simplifiée (_5m, _10m, …)."""
+    return any(filename.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS)
+
+
+def get_interco_geojson_files():
+    """Fichiers intercommunalités sources (agrégé + par nature juridique)."""
+    files = []
+    if not os.path.exists(DATA_DIR):
+        return files
+
+    main_file = "intercommunalites.geojson"
+    if os.path.exists(os.path.join(DATA_DIR, main_file)):
+        files.append(main_file)
+
+    for filename in sorted(os.listdir(DATA_DIR)):
+        if not filename.endswith(".geojson"):
+            continue
+        if not filename.startswith("intercommunalites_"):
+            continue
+        if is_simplified_geojson(filename):
+            continue
+        if filename not in files:
+            files.append(filename)
+    return files
+
 # Files to simplify (all GeoJSON files in data directory)
 GEOJSON_FILES_TO_SIMPLIFY = [
     "communes.geojson",
@@ -38,14 +64,11 @@ GEOJSON_FILES_TO_SIMPLIFY = [
 def get_all_geojson_files():
     """Get all GeoJSON files in data directory, including intercommunalites_*.geojson"""
     files = GEOJSON_FILES_TO_SIMPLIFY.copy()
-    
-    # Add all intercommunalites_*.geojson files
-    if os.path.exists(DATA_DIR):
-        for filename in os.listdir(DATA_DIR):
-            if filename.startswith("intercommunalites_") and filename.endswith(".geojson"):
-                if filename not in files:
-                    files.append(filename)
-    
+
+    for filename in get_interco_geojson_files():
+        if filename not in files:
+            files.append(filename)
+
     return files
 
 def simplify_geojson(input_filename, tolerance, tolerance_label):
@@ -186,6 +209,57 @@ def simplify_all_geojson():
     
     return completed > 0
 
+def simplify_interco_geojson(levels=None):
+    """Simplify intercommunalités GeoJSON files (aggregated + par nature juridique)."""
+    print("=" * 70)
+    print("INTERCOMMUNALITÉS GEOJSON SIMPLIFICATION")
+    print("=" * 70)
+
+    geojson_files = get_interco_geojson_files()
+    if not geojson_files:
+        print(f"\n❌ No intercommunalités GeoJSON found in {DATA_DIR}/")
+        print("   Run: python3 3_convert_shape_into_geojson.py --aggregate-only")
+        return False
+
+    if levels:
+        invalid_levels = [level for level in levels if level not in SIMPLIFICATION_LEVELS]
+        if invalid_levels:
+            print(f"❌ Invalid simplification levels: {', '.join(invalid_levels)}")
+            print(f"   Valid levels: {', '.join(SIMPLIFICATION_LEVELS.keys())}")
+            return False
+        levels_to_use = {
+            level: SIMPLIFICATION_LEVELS[level] for level in levels
+        }
+    else:
+        levels_to_use = SIMPLIFICATION_LEVELS
+
+    print(f"\n📋 {len(geojson_files)} fichier(s) intercommunalités à simplifier")
+    for filename in geojson_files:
+        filepath = os.path.join(DATA_DIR, filename)
+        size_mb = os.path.getsize(filepath) / (1024 * 1024)
+        print(f"  • {filename} ({size_mb:.1f} MB)")
+    print(f"🎯 Niveaux : {', '.join(levels_to_use.keys())}")
+
+    completed = 0
+    failed = 0
+    for idx, filename in enumerate(geojson_files, 1):
+        print(f"\n{'=' * 70}")
+        print(f"[{idx}/{len(geojson_files)}] {filename}")
+        print(f"{'=' * 70}")
+        for level_name, tolerance in levels_to_use.items():
+            result = simplify_geojson(filename, tolerance, level_name)
+            if result:
+                completed += 1
+            else:
+                failed += 1
+
+    print("\n" + "=" * 70)
+    print(f"✓ {completed} simplification(s) réussie(s)")
+    if failed:
+        print(f"❌ {failed} simplification(s) en échec")
+    print("=" * 70)
+    return completed > 0 and failed == 0
+
 def simplify_single_file(filename, levels=None):
     """Simplify a single GeoJSON file"""
     
@@ -245,8 +319,10 @@ def list_geojson_files():
         return
     
     # Separate original files from simplified files
-    original_files = [f for f in geojson_files if not any(f.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS.keys())]
-    simplified_files = [f for f in geojson_files if any(f.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS.keys())]
+    original_files = [
+        f for f in geojson_files if not is_simplified_geojson(f)
+    ]
+    simplified_files = [f for f in geojson_files if is_simplified_geojson(f)]
     
     print(f"\n📄 Original files ({len(original_files)}):")
     for filename in original_files:
@@ -281,6 +357,8 @@ if __name__ == "__main__":
 Examples:
   %(prog)s                                    # Simplify all GeoJSON files
   %(prog)s --list                             # List available files
+  %(prog)s --interco                          # Simplify intercommunalités only
+  %(prog)s --interco --levels 5m 10m          # Interco, 5m and 10m only
   %(prog)s --file communes.geojson            # Simplify only communes
   %(prog)s --file communes.geojson --levels 5m 10m  # Only 5m and 10m levels
         """
@@ -288,6 +366,8 @@ Examples:
     
     parser.add_argument('--list', action='store_true', 
                        help='List available GeoJSON files')
+    parser.add_argument('--interco', action='store_true',
+                       help='Simplify intercommunalités GeoJSON only (aggregated + par nature)')
     parser.add_argument('--file', type=str, 
                        help='Simplify only this specific file')
     parser.add_argument('--levels', nargs='+', choices=list(SIMPLIFICATION_LEVELS.keys()),
@@ -299,6 +379,10 @@ Examples:
         if args.list:
             list_geojson_files()
             sys.exit(0)
+
+        if args.interco:
+            success = simplify_interco_geojson(args.levels)
+            sys.exit(0 if success else 1)
         
         if args.file:
             # Simplify a single file
