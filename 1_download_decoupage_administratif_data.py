@@ -523,7 +523,7 @@ def download_interco_list():
     print(f"  Columns: {', '.join(df.columns)}")
     
     # Rename columns to lowercase and clean
-    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('°', 'n')
+    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('°', 'n').str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode("utf-8")
     
     # Save to CSV
     print(f"\n💾 Saving to {INTERCO_FILE}...")
@@ -585,7 +585,7 @@ def download_interco_members():
         print(f"✓ Loaded {len(df)} membership records")
         
         # Rename columns to lowercase and clean
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('°', 'n')
+        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('°', 'n').str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode("utf-8")
         
         # Save to CSV for faster future access
         print(f"  Saving CSV version for faster access...")

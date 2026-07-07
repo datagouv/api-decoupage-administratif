@@ -5,11 +5,13 @@ Generates simplified versions at 5m, 10m, 100m, and 1000m precision
 Uses Douglas-Peucker algorithm via Shapely
 """
 
-import geopandas as gpd
+import gzip
 import os
 import sys
 import json
 from pathlib import Path
+import pandas as pd
+import geopandas as gpd
 
 # Paths
 DATA_DIR = "data"
@@ -24,61 +26,14 @@ SIMPLIFICATION_LEVELS = {
     "1000m": 0.009,      # ~1000 meters
 }
 
-def is_simplified_geojson(filename: str) -> bool:
-    """True si le fichier est déjà une variante simplifiée (_5m, _10m, …)."""
-    return any(filename.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS)
-
-
-def get_interco_geojson_files():
-    """Fichiers intercommunalités sources (agrégé + par nature juridique)."""
-    files = []
-    if not os.path.exists(DATA_DIR):
-        return files
-
-    main_file = "intercommunalites.geojson"
-    if os.path.exists(os.path.join(DATA_DIR, main_file)):
-        files.append(main_file)
-
-    for filename in sorted(os.listdir(DATA_DIR)):
-        if not filename.endswith(".geojson"):
-            continue
-        if not filename.startswith("intercommunalites_"):
-            continue
-        if is_simplified_geojson(filename):
-            continue
-        if filename not in files:
-            files.append(filename)
-    return files
-
-# Files to simplify (all GeoJSON files in data directory)
-GEOJSON_FILES_TO_SIMPLIFY = [
-    "communes.geojson",
-    "arrondissements.geojson",
-    "communes-deleguees-et-associees.geojson",
-    "departements.geojson",
-    "regions.geojson",
-    "intercommunalites.geojson",
-    "aom.geojson",
-]
-
-def get_all_geojson_files():
-    """Get all GeoJSON files in data directory, including intercommunalites_*.geojson"""
-    files = GEOJSON_FILES_TO_SIMPLIFY.copy()
-
-    for filename in get_interco_geojson_files():
-        if filename not in files:
-            files.append(filename)
-
-    return files
-
 def simplify_geojson(input_filename, tolerance, tolerance_label):
     """Simplify a GeoJSON file with given tolerance"""
     
     input_path = os.path.join(DATA_DIR, input_filename)
     
     # Generate output filename
-    base_name = input_filename.replace(".geojson", "")
-    output_filename = f"{base_name}_{tolerance_label}.geojson"
+    base_name = input_filename.replace(".geojson.gz", "").replace(".geojson", "")
+    output_filename = f"{base_name}_{tolerance_label}.geojson.gz"
     output_path = os.path.join(DATA_DIR, output_filename)
     
     # Check if input file exists
@@ -92,15 +47,23 @@ def simplify_geojson(input_filename, tolerance, tolerance_label):
     try:
         # Load GeoJSON
         print(f"  📂 Loading {input_filename}...", end=" ")
+        if input_path.endswith('.gz'):
+            input_path = f"/vsigzip/{input_path}"
         gdf = gpd.read_file(input_path)
         print(f"({len(gdf)} features)")
         
         # Simplify geometries
         print(f"  🔄 Simplifying with tolerance {tolerance_label} ({tolerance}°)...", end=" ")
-        gdf['geometry'] = gdf['geometry'].simplify(tolerance=tolerance, preserve_topology=True)
+        gdf['geometry'] = gdf['geometry'].simplify_coverage(tolerance)
         
         # Save simplified GeoJSON
-        gdf.to_file(output_path, driver='GeoJSON', encoding='utf-8')
+        uncompress_name = output_path.replace('.gz', '')
+        gdf.to_file(uncompress_name, driver='GeoJSON', encoding='utf-8')
+        if input_path.endswith('.gz'):
+            with open(uncompress_name, 'rb') as orig_file:
+                with gzip.open(output_path, 'wb') as zipped_file:
+                    zipped_file.writelines(orig_file)
+            Path(uncompress_name).unlink(missing_ok=True)
         
         # Get simplified file size
         simplified_size = os.path.getsize(output_path) / (1024 * 1024)
@@ -123,6 +86,134 @@ def simplify_geojson(input_filename, tolerance, tolerance_label):
         print(f"  ❌ Error: {e}")
         return None
 
+def simplify_communes_arm_geojson(input_filename_communes, input_filename_arm, tolerance, tolerance_label):
+    """Simplify a GeoJSON file with given tolerance"""
+    
+    input_path_communes = os.path.join(DATA_DIR, input_filename_communes)
+    input_path_arm = os.path.join(DATA_DIR, input_filename_arm)
+    
+    # Generate output filename
+    base_name_communes = input_filename_communes.replace(".geojson.gz", "").replace(".geojson", "")
+    base_name_arm = input_filename_arm.replace(".geojson.gz", "").replace(".geojson", "")
+
+    output_filename_communes = f"{base_name_communes}_{tolerance_label}.geojson.gz"
+    output_path_communes = os.path.join(DATA_DIR, output_filename_communes)
+
+    output_filename_arm = f"{base_name_arm}_{tolerance_label}.geojson.gz"
+    output_path_arm = os.path.join(DATA_DIR, output_filename_arm)
+    
+    # Check if input file communes exists
+    if not os.path.exists(input_path_communes):
+        print(f"  ⚠️  File not found: {input_path_communes}")
+        return None
+
+    # Check if input file arm exists
+    if not os.path.exists(input_path_arm):
+        print(f"  ⚠️  File not found: {input_path_arm}")
+        return None
+
+    # Get original file size
+    original_size_communes = os.path.getsize(input_path_communes) / (1024 * 1024)
+    original_size_arm = os.path.getsize(input_path_arm) / (1024 * 1024)
+    
+    try:
+        # Load GeoJSON
+        print(f"  📂 Loading {input_filename_communes}...", end=" ")
+        if input_path_communes.endswith('.gz'):
+            input_path_communes = f"/vsigzip/{input_path_communes}"
+        gdf_communes = gpd.read_file(input_path_communes)
+        gdf_communes_no_75056_69123_13055 = gdf_communes[~gdf_communes['INSEE_COM'].isin(["75056", "69123", "13055"])]
+        gdf_communes_only_75056_69123_13055 = gdf_communes[gdf_communes['INSEE_COM'].isin(["75056", "69123", "13055"])]
+        print(f"({len(gdf_communes)} features)")
+        
+        # Simplify geometries for communes alone
+        # print(f"  🔄 Simplifying with tolerance {tolerance_label} ({tolerance}°)...", end=" ")
+        # gdf_communes['geometry'] = gdf_communes['geometry'].simplify_coverage(tolerance)
+        print(f"  📂 Loading {input_filename_arm}...", end=" ")
+        if input_path_arm.endswith('.gz'):
+            input_path_arm = f"/vsigzip/{input_path_arm}"
+        gdf_arm = gpd.read_file(input_path_arm)
+        print(f"({len(gdf_arm)} features)")
+        
+        # Merge ARM and communes without 75056, 69123, 13055 geometries
+        gdf_arm_for_mix = gdf_arm[['INSEE_ARM', 'INSEE_COM', 'geometry']].rename(columns={"INSEE_ARM": "insee", "INSEE_COM": "com"})
+        gdf_arm_for_mix['category'] = 'arm'
+        gdf_communes_no_75056_69123_13055_mix = gdf_communes_no_75056_69123_13055[['INSEE_COM', 'geometry']].rename(columns={"INSEE_COM": "insee"})
+        gdf_communes_no_75056_69123_13055_mix['com'] = ''
+        gdf_communes_no_75056_69123_13055_mix['category'] = 'com'
+        gdf_communes_arm = pd.concat([gdf_communes_no_75056_69123_13055_mix, gdf_arm_for_mix])
+        # Simplify
+        gdf_communes_arm['geometry'] = gdf_communes_arm['geometry'].simplify_coverage(tolerance)
+
+        gdf_arm_simplified = gdf_communes_arm[gdf_communes_arm['category'] == 'arm']
+        only_75056_69123_13055_simplified = gdf_arm_simplified.dissolve(by='com').reset_index()
+        only_75056_69123_13055_simplified = only_75056_69123_13055_simplified[['com', 'geometry']].rename(columns={"com": "insee"})
+        gdf_communes_simplified = pd.concat([gdf_communes_arm[gdf_communes_arm['category'] == 'com'][['insee', 'geometry']], only_75056_69123_13055_simplified])
+        gdf_communes_updated = pd.merge(gdf_communes, gdf_communes_simplified, left_on='INSEE_COM', right_on='insee')
+        gdf_communes_updated['geometry'] = gdf_communes_updated['geometry_y']
+        gdf_communes_updated = gdf_communes_updated[['ID', 'NOM', 'NOM_M', 'STATUT', 'INSEE_COM', 'POPULATION', 'date_du_re',
+               'organisme_', 'INSEE_CAN', 'INSEE_ARR', 'INSEE_DEP', 'INSEE_REG',
+               'SIREN_EPCI', 'code_siren', 'code_posta', 'superficie', 'geometry']]
+        gdf_arm_updated = pd.merge(gdf_arm, gdf_arm_simplified, left_on='INSEE_ARM', right_on='insee')
+        gdf_arm_updated['geometry'] = gdf_arm_updated['geometry_y']
+        gdf_arm_updated = gdf_arm_updated[['ID', 'NOM', 'NOM_M', 'numero_de_', 'INSEE_ARM', 'INSEE_COM', 'code_posta', 'POPULATION', 'geometry']]
+        
+
+        # Save simplified GeoJSON
+        print(f"  📂 Write file to {output_path_arm}")
+        uncompress_name_arm = output_path_arm.replace('.gz', '')
+        gdf_arm_updated.to_file(uncompress_name_arm, driver='GeoJSON', encoding='utf-8')
+        if input_path_communes.endswith('.gz'):
+            with open(uncompress_name_arm, 'rb') as orig_file:
+                with gzip.open(output_path_arm, 'wb') as zipped_file:
+                    zipped_file.writelines(orig_file)
+            Path(uncompress_name_arm).unlink(missing_ok=True)
+
+        # Save simplified GeoJSON
+        print(f"  📂 Write file to {output_path_communes}")
+        uncompress_name_communes = output_path_communes.replace('.gz', '')
+        gdf_communes_updated.to_file(uncompress_name_communes, driver='GeoJSON', encoding='utf-8')
+        if input_path_communes.endswith('.gz'):
+            with open(uncompress_name_communes, 'rb') as orig_file:
+                with gzip.open(output_path_communes, 'wb') as zipped_file:
+                    zipped_file.writelines(orig_file)
+            Path(uncompress_name_communes).unlink(missing_ok=True)
+        
+        print(f"  📂 Get files size for communes")
+        # Get simplified file size
+        simplified_size_communes = os.path.getsize(output_path_communes) / (1024 * 1024)
+        reduction_communes = ((original_size_communes - simplified_size_communes) / original_size_communes) * 100 if original_size_communes > 0 else 0
+        print(f"  📂 Get files size for arm")
+        simplified_size_arm = os.path.getsize(output_path_arm) / (1024 * 1024)
+        reduction_arm = ((original_size_arm - simplified_size_arm) / original_size_arm) * 100 if original_size_arm > 0 else 0
+        
+        print(f"✓")
+        print(f"  💾 Saved: {output_filename_arm}")
+        print(f"  📊 Size: {original_size_arm:.2f} MB → {simplified_size_arm:.2f} MB (-{reduction_arm:.1f}%)")
+        
+        print(f"✓")
+        print(f"  💾 Saved: {output_filename_communes}")
+        print(f"  📊 Size: {original_size_communes:.2f} MB → {simplified_size_communes:.2f} MB (-{reduction_communes:.1f}%)")
+        return [{
+            "output_file": output_filename_arm,
+            "original_size": original_size_arm,
+            "simplified_size": simplified_size_arm,
+            "reduction_percent": reduction_arm,
+            "features": len(gdf_arm_updated)
+        },
+        {
+            "output_file": output_filename_communes,
+            "original_size": original_size_communes,
+            "simplified_size": simplified_size_communes,
+            "reduction_percent": reduction_communes,
+            "features": len(gdf_communes_updated)
+        }]
+        
+    except Exception as e:
+        print(f"❌")
+        print(f"  ❌ Error: {e}")
+        return None
+
 def simplify_all_geojson():
     """Simplify all GeoJSON files at all tolerance levels"""
     
@@ -131,13 +222,12 @@ def simplify_all_geojson():
     print("="*70)
     
     # Get all GeoJSON files
-    geojson_files = get_all_geojson_files()
     
-    print(f"\n📋 Found {len(geojson_files)} GeoJSON files to simplify")
+    print(f"\n📋 Will simplify 3 GeoJSON files")
     print(f"🎯 Simplification levels: {', '.join(SIMPLIFICATION_LEVELS.keys())}")
     
     # Statistics
-    total_files = len(geojson_files)
+    total_files = 3
     total_levels = len(SIMPLIFICATION_LEVELS)
     total_operations = total_files * total_levels
     completed = 0
@@ -147,29 +237,52 @@ def simplify_all_geojson():
     results_summary = []
     
     # Process each file
-    for idx, filename in enumerate(geojson_files, 1):
-        print(f"\n{'='*70}")
-        print(f"[{idx}/{total_files}] Processing: {filename}")
-        print(f"{'='*70}")
+    filename = "communes-deleguees-et-associees.geojson.gz"
+    print(f"\n{'='*70}")
+    print(f"Processing: {filename}")
+    print(f"{'='*70}")
+    
+    file_results = {
+        "filename": filename,
+        "levels": {}
+    }
+    
+    # Apply each simplification level
+    for level_name, tolerance in SIMPLIFICATION_LEVELS.items():
+        result = simplify_geojson(filename, tolerance, level_name)
         
-        file_results = {
-            "filename": filename,
-            "levels": {}
-        }
-        
-        # Apply each simplification level
-        for level_name, tolerance in SIMPLIFICATION_LEVELS.items():
-            result = simplify_geojson(filename, tolerance, level_name)
-            
-            if result:
-                file_results["levels"][level_name] = result
-                completed += 1
-            elif result is None and not os.path.exists(os.path.join(DATA_DIR, filename)):
-                skipped += 1
-            else:
-                failed += 1
-        
-        results_summary.append(file_results)
+        if result:
+            file_results["levels"][level_name] = result
+            completed += 1
+        elif result is None and not os.path.exists(os.path.join(DATA_DIR, filename)):
+            skipped += 1
+        else:
+            failed += 1
+    
+    results_summary.append(file_results)
+
+    # Apply each simplification level
+    file_results_arm = {
+        "filename": "arrondissements.geojson.gz",
+        "levels": {}
+    }
+    file_results_communes = {
+        "filename": "communes.geojson.gz",
+        "levels": {}
+    }
+    for level_name, tolerance in SIMPLIFICATION_LEVELS.items():
+        results = simplify_communes_arm_geojson("communes.geojson.gz", "arrondissements.geojson.gz", tolerance, level_name)
+        if results:
+            file_results_arm["levels"][level_name] = results[0]
+            file_results_communes["levels"][level_name] = results[1]
+            completed += 1
+        elif results is None and not os.path.exists(os.path.join(DATA_DIR, "communes.geojson.gz")) and not os.path.exists(os.path.join(DATA_DIR, "arrondissements.geojson.gz")):
+            skipped += 2
+        else:
+            failed += 2
+    
+    results_summary.append(file_results_arm)
+    results_summary.append(file_results_communes)
     
     # Final summary
     print("\n" + "="*70)
@@ -208,57 +321,6 @@ def simplify_all_geojson():
     print(f"  - Use *_1000m.geojson for overview/country-wide views")
     
     return completed > 0
-
-def simplify_interco_geojson(levels=None):
-    """Simplify intercommunalités GeoJSON files (aggregated + par nature juridique)."""
-    print("=" * 70)
-    print("INTERCOMMUNALITÉS GEOJSON SIMPLIFICATION")
-    print("=" * 70)
-
-    geojson_files = get_interco_geojson_files()
-    if not geojson_files:
-        print(f"\n❌ No intercommunalités GeoJSON found in {DATA_DIR}/")
-        print("   Run: python3 3_convert_shape_into_geojson.py --aggregate-only")
-        return False
-
-    if levels:
-        invalid_levels = [level for level in levels if level not in SIMPLIFICATION_LEVELS]
-        if invalid_levels:
-            print(f"❌ Invalid simplification levels: {', '.join(invalid_levels)}")
-            print(f"   Valid levels: {', '.join(SIMPLIFICATION_LEVELS.keys())}")
-            return False
-        levels_to_use = {
-            level: SIMPLIFICATION_LEVELS[level] for level in levels
-        }
-    else:
-        levels_to_use = SIMPLIFICATION_LEVELS
-
-    print(f"\n📋 {len(geojson_files)} fichier(s) intercommunalités à simplifier")
-    for filename in geojson_files:
-        filepath = os.path.join(DATA_DIR, filename)
-        size_mb = os.path.getsize(filepath) / (1024 * 1024)
-        print(f"  • {filename} ({size_mb:.1f} MB)")
-    print(f"🎯 Niveaux : {', '.join(levels_to_use.keys())}")
-
-    completed = 0
-    failed = 0
-    for idx, filename in enumerate(geojson_files, 1):
-        print(f"\n{'=' * 70}")
-        print(f"[{idx}/{len(geojson_files)}] {filename}")
-        print(f"{'=' * 70}")
-        for level_name, tolerance in levels_to_use.items():
-            result = simplify_geojson(filename, tolerance, level_name)
-            if result:
-                completed += 1
-            else:
-                failed += 1
-
-    print("\n" + "=" * 70)
-    print(f"✓ {completed} simplification(s) réussie(s)")
-    if failed:
-        print(f"❌ {failed} simplification(s) en échec")
-    print("=" * 70)
-    return completed > 0 and failed == 0
 
 def simplify_single_file(filename, levels=None):
     """Simplify a single GeoJSON file"""
@@ -319,10 +381,8 @@ def list_geojson_files():
         return
     
     # Separate original files from simplified files
-    original_files = [
-        f for f in geojson_files if not is_simplified_geojson(f)
-    ]
-    simplified_files = [f for f in geojson_files if is_simplified_geojson(f)]
+    original_files = [f for f in geojson_files if not any(f.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS.keys())]
+    simplified_files = [f for f in geojson_files if any(f.endswith(f"_{level}.geojson") for level in SIMPLIFICATION_LEVELS.keys())]
     
     print(f"\n📄 Original files ({len(original_files)}):")
     for filename in original_files:
@@ -357,8 +417,6 @@ if __name__ == "__main__":
 Examples:
   %(prog)s                                    # Simplify all GeoJSON files
   %(prog)s --list                             # List available files
-  %(prog)s --interco                          # Simplify intercommunalités only
-  %(prog)s --interco --levels 5m 10m          # Interco, 5m and 10m only
   %(prog)s --file communes.geojson            # Simplify only communes
   %(prog)s --file communes.geojson --levels 5m 10m  # Only 5m and 10m levels
         """
@@ -366,8 +424,6 @@ Examples:
     
     parser.add_argument('--list', action='store_true', 
                        help='List available GeoJSON files')
-    parser.add_argument('--interco', action='store_true',
-                       help='Simplify intercommunalités GeoJSON only (aggregated + par nature)')
     parser.add_argument('--file', type=str, 
                        help='Simplify only this specific file')
     parser.add_argument('--levels', nargs='+', choices=list(SIMPLIFICATION_LEVELS.keys()),
@@ -379,10 +435,6 @@ Examples:
         if args.list:
             list_geojson_files()
             sys.exit(0)
-
-        if args.interco:
-            success = simplify_interco_geojson(args.levels)
-            sys.exit(0 if success else 1)
         
         if args.file:
             # Simplify a single file
@@ -405,4 +457,3 @@ Examples:
         import traceback
         traceback.print_exc()
         sys.exit(1)
-

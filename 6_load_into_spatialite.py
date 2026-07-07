@@ -29,23 +29,22 @@ DATA_DIR = "data"
 # Intercommunalités, départements, régions: medium precision (10m)
 
 COMMUNES_CSV = os.path.join(DATA_DIR, "communes.csv")
-COMMUNES_GEOJSON = os.path.join(DATA_DIR, "communes_5m.geojson")  # 5m precision
+COMMUNES_GEOJSON = os.path.join(DATA_DIR, "communes_5m.geojson.gz")  # 5m precision
 ARRONDISSEMENTS_CSV = os.path.join(DATA_DIR, "arrondissements.csv")
-ARRONDISSEMENTS_GEOJSON = os.path.join(DATA_DIR, "arrondissements_5m.geojson")  # 5m precision
+ARRONDISSEMENTS_GEOJSON = os.path.join(DATA_DIR, "arrondissements_5m.geojson.gz")  # 5m precision
 COMMUNES_DELEGUEES_CSV = os.path.join(DATA_DIR, "communes-associees-ou-deleguees.csv")
-COMMUNES_DELEGUEES_GEOJSON = os.path.join(DATA_DIR, "communes-deleguees-et-associees_5m.geojson")  # 5m precision
+COMMUNES_DELEGUEES_GEOJSON = os.path.join(DATA_DIR, "communes-deleguees-et-associees_5m.geojson.gz")  # 5m precision
 DEPARTEMENTS_CSV = os.path.join(DATA_DIR, "departements.csv")
-DEPARTEMENTS_GEOJSON = os.path.join(DATA_DIR, "departements_5m.geojson")  # 10m precision
+DEPARTEMENTS_GEOJSON = os.path.join(DATA_DIR, "departements_5m.geojson.gz")  # 10m precision
 REGIONS_CSV = os.path.join(DATA_DIR, "regions.csv")
-REGIONS_GEOJSON = os.path.join(DATA_DIR, "regions_5m.geojson")  # 10m precision
+REGIONS_GEOJSON = os.path.join(DATA_DIR, "regions_5m.geojson.gz")  # 10m precision
 INTERCO_CSV = os.path.join(DATA_DIR, "interco_enriched.csv")
-INTERCO_GEOJSON = os.path.join(DATA_DIR, "intercommunalites_5m.geojson")  # 10m precision
-INTERCO_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "intercommunalites.geojson")
+INTERCO_GEOJSON = os.path.join(DATA_DIR, "intercommunalites_5m.geojson.gz")  # 10m precision
 INTERCO_MEMBERS_CSV = os.path.join(DATA_DIR, "interco_members.csv")  # All commune-interco associations
 AOM_CSV = os.path.join(DATA_DIR, "aom.csv")
 AOM_COMMUNE_CSV = os.path.join(DATA_DIR, "aom_commune.csv")
-AOM_GEOJSON = os.path.join(DATA_DIR, "aom_5m.geojson")
-AOM_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "aom.geojson")
+AOM_GEOJSON = os.path.join(DATA_DIR, "aom_5m.geojson.gz")
+AOM_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "aom.geojson.gz")
 SIREN_INSEE_MAPPING_CSV = os.path.join(DATA_DIR, "siren_insee_mapping.csv")
 MAIRIES_GEOJSON = os.path.join(DATA_DIR, "mairies.geojson.gz")
 
@@ -243,7 +242,10 @@ def load_commune_geometries(engine):
     
     # Load communes geometries
     if os.path.exists(COMMUNES_GEOJSON):
-        gdf_com = gpd.read_file(COMMUNES_GEOJSON)
+        commune_geojson = COMMUNES_GEOJSON
+        if commune_geojson.endswith('.gz'):
+            commune_geojson = f"/vsigzip/{commune_geojson}"
+        gdf_com = gpd.read_file(commune_geojson)
         print(f"✓ Loaded {len(gdf_com)} communes with geometries")
         geodataframes.append(gdf_com)
     else:
@@ -251,19 +253,25 @@ def load_commune_geometries(engine):
     
     # Load arrondissements geometries
     if os.path.exists(ARRONDISSEMENTS_GEOJSON):
-        gdf_arm = gpd.read_file(ARRONDISSEMENTS_GEOJSON)
+        arrondissements_geojson = ARRONDISSEMENTS_GEOJSON
+        if arrondissements_geojson.endswith('.gz'):
+            arrondissements_geojson = f"/vsigzip/{arrondissements_geojson}"
+        gdf_arm = gpd.read_file(arrondissements_geojson)
         print(f"✓ Loaded {len(gdf_arm)} arrondissements with geometries")
         geodataframes.append(gdf_arm)
     else:
-        print(f"⚠️  File not found: {ARRONDISSEMENTS_GEOJSON}")
+        print(f"⚠️  File not found: {ARRONDISSEMENTS_GEOJSON.replace('/vsigzip/', '')}")
     
     # Load communes déléguées/associées geometries
     if os.path.exists(COMMUNES_DELEGUEES_GEOJSON):
-        gdf_comda = gpd.read_file(COMMUNES_DELEGUEES_GEOJSON)
+        communes_deleguees_geojson = COMMUNES_DELEGUEES_GEOJSON
+        if communes_deleguees_geojson.endswith('.gz'):
+            communes_deleguees_geojson = f"/vsigzip/{communes_deleguees_geojson}"
+        gdf_comda = gpd.read_file(communes_deleguees_geojson)
         print(f"✓ Loaded {len(gdf_comda)} communes déléguées/associées with geometries")
         geodataframes.append(gdf_comda)
     else:
-        print(f"⚠️  File not found: {COMMUNES_DELEGUEES_GEOJSON}")
+        print(f"⚠️  File not found: {COMMUNES_DELEGUEES_GEOJSON.replace('/vsigzip/', '')}")
     
     if not geodataframes:
         print(f"❌ No GeoJSON files found!")
@@ -376,6 +384,8 @@ def load_geometry_table_from_geojson(
         return False
 
     print(f"\n  Loading {label} geometries from {geojson_path}...")
+    if geojson_path.endswith('.gz'):
+        geojson_path = f"/vsigzip/{geojson_path}" 
     gdf = gpd.read_file(geojson_path)
     print(f"✓ Loaded {len(gdf)} {label} with geometries")
 
@@ -532,6 +542,8 @@ def _resolve_interco_geojson_path():
 def _load_interco_geometries_from_geojson(engine, geojson_path):
     """Load intercommunalité geometries from a GeoJSON file into interco_geometries."""
     print(f"\n  Loading intercommunalités geometries from {geojson_path}...")
+    if geojson_path.endswith('.gz'):
+        geojson_path = f"/vsigzip/{geojson_path}"
     gdf_interco = gpd.read_file(geojson_path)
     print(f"✓ Loaded {len(gdf_interco)} intercommunalités with geometries")
 
@@ -607,7 +619,7 @@ def load_interco(engine):
     geojson_path = _resolve_interco_geojson_path()
     if geojson_path is None:
         print(f"⚠️  File not found: {INTERCO_GEOJSON}")
-        print("  Please run scripts 3 and 4 first to generate and simplify GeoJSON files")
+        print("  Please run scripts 3, 4 and 5 first to generate and simplify GeoJSON files")
         with engine.connect() as conn:
             _ensure_interco_geometries_table(conn)
         print("✓ Empty interco_geometries table created (metadata-only mode)")
@@ -645,6 +657,8 @@ def _resolve_aom_geojson_path():
 def _load_aom_geometries_from_geojson(engine, geojson_path):
     """Load AOM geometries from a GeoJSON file into aom_geometries."""
     print(f"\n  Loading AOM geometries from {geojson_path}...")
+    if geojson_path.endswith('.gz'):
+        geojson_path = f"/vsigzip/{geojson_path}"
     gdf_aom = gpd.read_file(geojson_path)
     print(f"✓ Loaded {len(gdf_aom)} AOM with geometries")
 
@@ -804,13 +818,13 @@ def load_commune_interco_associations(engine):
         return None
     
     # Create a clean dataframe with commune SIREN -> interco SIREN associations
-    associations = df_members[['siren_membre', 'nn_siren', 'nom_du_groupement', 'nature_juridique', 'catégorie_des_membres_du_groupement']].copy()
+    associations = df_members[['siren_membre', 'nn_siren', 'nom_du_groupement', 'nature_juridique', 'categorie_des_membres_du_groupement']].copy()
     associations = associations.rename(columns={
         'siren_membre': 'commune_siren',
         'nn_siren': 'interco_siren',
         'nom_du_groupement': 'interco_nom',
         'nature_juridique': 'interco_nature',
-        'catégorie_des_membres_du_groupement': 'membre_categorie'
+        'categorie_des_membres_du_groupement': 'membre_categorie'
     })
     
     # Remove rows with missing essential data
@@ -819,6 +833,7 @@ def load_commune_interco_associations(engine):
     print(f"  {len(associations)} associations before deduplication")
     
     # Separate direct commune associations from interco-to-interco associations
+    # import ipdb;ipdb.set_trace()
     commune_associations = associations[associations['membre_categorie'] == 'commune'].copy()
     interco_to_interco = associations[associations['membre_categorie'] == 'groupement'].copy()
     
@@ -916,8 +931,8 @@ def load_commune_interco_associations(engine):
     # -------------------------------------------------------------------------
     print(f"\n  Creating interco_commune competency join table...")
 
-    competence_start_col = "nombre_de_compétences_exercées"
-    competence_end_col = "adhésion_siren"
+    competence_start_col = "nombre_de_competences_exercees"
+    competence_end_col = "adhesion_siren"
 
     if competence_start_col in df_members.columns and competence_end_col in df_members.columns:
         start_idx = df_members.columns.get_loc(competence_start_col) + 1
@@ -941,12 +956,12 @@ def load_commune_interco_associations(engine):
         competence_input = df_members[[
             "nn_siren",
             "siren_membre",
-            "catégorie_des_membres_du_groupement",
+            "categorie_des_membres_du_groupement",
         ] + competence_columns].copy()
 
         # 1) Direct communes
         direct_comp_rows = competence_input[
-            competence_input["catégorie_des_membres_du_groupement"] == "commune"
+            competence_input["categorie_des_membres_du_groupement"] == "commune"
         ]
         for _, row in direct_comp_rows.iterrows():
             row_dict = {
@@ -959,7 +974,7 @@ def load_commune_interco_associations(engine):
 
         # 2) Groupement members: propagate competencies to all communes of member interco
         groupement_comp_rows = competence_input[
-            competence_input["catégorie_des_membres_du_groupement"] == "groupement"
+            competence_input["categorie_des_membres_du_groupement"] == "groupement"
         ]
         if len(groupement_comp_rows) > 0:
             for _, row in groupement_comp_rows.iterrows():
@@ -1372,7 +1387,6 @@ def create_interco_view(engine):
     print("\nCreating intercommunalités view...")
     
     with engine.connect() as conn:
-        _ensure_interco_geometries_table(conn)
         conn.execute(text("DROP VIEW IF EXISTS interco"))
         
         # Use pre-computed GeoJSON for better performance
@@ -1384,10 +1398,10 @@ def create_interco_view(engine):
                 m.nom_recherche as nom_recherche,
                 m.nature_juridique as nature,
                 m.mode_de_financement as financement,
-                m.date_de_création as date_creation,
+                m.date_de_creation as date_creation,
                 m.population_totale as population,
                 m.nombre_de_membres as nb_membres_declares,
-                m.nombre_de_compétences_exercées as nb_competences,
+                m.nombre_de_competences_exercees as nb_competences,
                 m.membres_siren as membres_siren,
                 m.communes_siren as communes_siren,
                 m.communes_code as communes_code,
@@ -1623,39 +1637,10 @@ def migrate_admin_geometries():
         print("\n✓ Migration admin geometries terminée.")
 
 
-def migrate_interco_geometries():
-    """Répare ou recharge les géométries intercommunalités sur une base existante."""
-    print("=" * 60)
-    print("MIGRATE INTERCO GEOMETRIES")
-    print("=" * 60)
-    engine = create_database_connection()
-
-    with engine.connect() as conn:
-        _ensure_interco_geometries_table(conn)
-
-    geojson_path = _resolve_interco_geojson_path()
-    if geojson_path is None:
-        print(
-            "\n⚠️  Table vide créée : l'API répond à nouveau, "
-            "mais sans géométries tant que les GeoJSON ne sont pas générés."
-        )
-        print("  python3 3_convert_shape_into_geojson.py --aggregate-only")
-        print("  python3 4_simplify_geojson.py")
-        print("  python3 5_load_into_spatialite.py --migrate-interco-geometries")
-    else:
-        _load_interco_geometries_from_geojson(engine, geojson_path)
-
-    create_interco_view(engine)
-    print("\n✓ Migration interco geometries terminée.")
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--migrate-bbox":
         migrate_bbox_only()
     elif len(sys.argv) > 1 and sys.argv[1] == "--migrate-admin-geometries":
         migrate_admin_geometries()
-    elif len(sys.argv) > 1 and sys.argv[1] == "--migrate-interco-geometries":
-        migrate_interco_geometries()
     else:
         main()
-
