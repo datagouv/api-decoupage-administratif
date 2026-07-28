@@ -4,6 +4,7 @@ Script pour télécharger et préparer les sources de données administratives.
 """
 import sys
 import tempfile
+import shutil
 from pathlib import Path
 import geopandas as gpd
 import requests
@@ -17,9 +18,9 @@ SOURCES_PATH = Path(__file__).parent / "sources"
 ADMIN_EXPRESS_BASE_URL = "https://data.geopf.fr/telechargement/download/ADMIN-EXPRESS/ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19/"
 ADMIN_EXPRESS_FILE = "ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19.7z"
 
-OSM_COMMUNES_COM_BASE_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2022/shp/"
-OSM_COMMUNES_COM_FILE = "communes-com-20220101-shp.zip"
-
+OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2026/shp/osm-communes-com-without-admin-express.zip"
+"osm-communes-com-without-admin-express.zip"
+OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_FILE = OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL.split("/")[-1]
 
 def get_source_file_path(file_name: str) -> Path:
     """Retourne le chemin complet d'un fichier source."""
@@ -79,20 +80,13 @@ def decompress_admin_express_files() -> None:
     et arrondissements municipaux.
     """
     # Vérifier si les fichiers sont déjà extraits
-    if (SOURCES_PATH / "COMMUNE.shp").exists():
+    if (SOURCES_PATH / "admin_express.gpkg").exists():
         print("ADMIN EXPRESS files already extracted. Skip decompression.")
         return
     
     print("Decompressing ADMIN EXPRESS archive…")
     
     archive_path = get_source_file_path(ADMIN_EXPRESS_FILE)
-
-    # Patterns des fichiers à extraire
-    patterns = {
-        'commune': {'cleabs': 'ID', 'nom_officiel': 'NOM', 'nom_officiel_en_majuscules': 'NOM_M', 'code_insee': 'INSEE_COM', 'statut': 'STATUT', 'population': 'POPULATION', 'code_insee_du_canton': 'INSEE_CAN', 'code_insee_de_l_arrondissement': 'INSEE_ARR', 'code_insee_du_departement': 'INSEE_DEP', 'code_insee_de_la_region': 'INSEE_REG', 'codes_siren_des_epci': 'SIREN_EPCI'},
-        'commune_associee_ou_deleguee': {'cleabs':'ID', 'nom_officiel':'NOM', 'nom_officiel_en_majuscules':'NOM_M', 'code_insee':'INSEE_CAD', 'code_insee_de_la_commune_de_rattach':'INSEE_COM', 'nature':'NATURE', 'population':'POPULATION'},
-        'arrondissement_municipal': {'cleabs': 'ID', 'nom_officiel': 'NOM', 'nom_officiel_en_majuscules': 'NOM_M', 'code_insee': 'INSEE_ARM', 'code_insee_de_la_commune_de_rattach': 'INSEE_COM', 'population': 'POPULATION'}
-    }
     
     try:
         with py7zr.SevenZipFile(archive_path, mode='r') as archive:
@@ -106,18 +100,12 @@ def decompress_admin_express_files() -> None:
                 if '.gpkg' in base_name:
                     files_to_extract.append(file_name)
             
-            if len(files_to_extract) > 0:
+            if len(files_to_extract) == 1:
                 print(f"Extracting {len(files_to_extract)} files…")
-                # Extraire dans un dossier temporaire
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    archive.extract(targets=files_to_extract, path=temp_dir)
-                    list_layers = gpd.list_layers(Path(temp_dir) / files_to_extract[0])['name']
-                    layers_gpkg = list_layers[list_layers.isin(patterns.keys())]
-                    for layer in layers_gpkg.to_list():
-                        gdf = gpd.read_file(Path(temp_dir) / files_to_extract[0], layer=layer).rename(columns=patterns[layer])
-                        file_name_dest = layer.upper() + '.shp'
-                        dest_file = SOURCES_PATH / file_name_dest
-                        gdf.to_file(dest_file)
+                archive.extract(targets=files_to_extract)
+                shutil.move(Path(files_to_extract[0]), SOURCES_PATH / "admin_express.gpkg")
+                dir_to_clean = files_to_extract[0].split('/')[0]
+                shutil.rmtree(dir_to_clean)
                 
                 print("✓ ADMIN EXPRESS archive decompressed successfully")
             else:
@@ -131,30 +119,30 @@ def decompress_admin_express_files() -> None:
         raise
 
 
-def decompress_osm_communes_com_files() -> None:
+def decompress_osm_communes_com_without_admin_express_files() -> None:
     """
     Décompresse l'archive OSM communes-com et renomme les fichiers
     en osm-communes-com.
     """
     # Vérifier si les fichiers sont déjà extraits
-    if (SOURCES_PATH / "osm-communes-com.shp").exists():
-        print("OSM communes-com files already extracted. Skip decompression.")
+    if (SOURCES_PATH / "osm-communes-com-without-admin-express.shp").exists():
+        print("OSM osm-communes-com-without-admin-express files already extracted. Skip decompression.")
         return
     
-    print("Decompressing OSM communes-com archive…")
+    print("Decompressing OSM osm-communes-com-without-admin-express archive…")
     
-    archive_path = get_source_file_path(OSM_COMMUNES_COM_FILE)
+    archive_path = get_source_file_path(OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_FILE)
     
     try:
         with zipfile.ZipFile(archive_path, 'r') as zip_file:
             # Lister tous les fichiers qui commencent par 'communes-com'
             files_to_extract = [
                 name for name in zip_file.namelist()
-                if name.startswith('communes-com')
+                if name.startswith('osm-communes-com-without-admin-express')
             ]
             
             if not files_to_extract:
-                print("✗ No communes-com files found in archive")
+                print("✗ No osm-communes-com-without-admin-express files found in archive")
                 return
             
             print(f"Extracting and renaming {len(files_to_extract)} files…")
@@ -162,17 +150,13 @@ def decompress_osm_communes_com_files() -> None:
             for file_name in files_to_extract:
                 # Extraire le fichier
                 file_data = zip_file.read(file_name)
-                
-                # Construire le nouveau nom avec l'extension du fichier original
-                extension = Path(file_name).suffix
-                new_file_name = f"osm-communes-com{extension}"
-                new_file_path = SOURCES_PATH / new_file_name
+                file_path = SOURCES_PATH / file_name
                 
                 # Écrire le fichier avec le nouveau nom
-                with open(new_file_path, 'wb') as f:
+                with open(file_path, 'wb') as f:
                     f.write(file_data)
             
-            print("✓ OSM communes-com archive decompressed successfully")
+            print("✓ OSM osm-communes-com-without-admin-express archive decompressed successfully")
             
     except zipfile.BadZipFile as e:
         print(f"✗ Error decompressing OSM communes-com archive: {e}")
@@ -203,10 +187,10 @@ def main() -> int:
         
         # Télécharger et décompresser OSM communes-com
         download_source_file(
-            OSM_COMMUNES_COM_BASE_URL + OSM_COMMUNES_COM_FILE,
-            OSM_COMMUNES_COM_FILE
+            OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL,
+            OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_FILE
         )
-        decompress_osm_communes_com_files()
+        decompress_osm_communes_com_without_admin_express_files()
         
         print("\n✓ All sources prepared successfully!")
         return 0

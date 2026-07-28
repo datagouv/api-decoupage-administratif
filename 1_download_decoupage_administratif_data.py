@@ -45,7 +45,6 @@ MISSING_CODES_FILE = os.path.join(ASSETS_DIR, "codes-postaux-missing.json")
 INTERCO_FILE = os.path.join(DATA_DIR, "intercos.csv")
 INTERCO_MEMBERS_XLSX = os.path.join(DATA_DIR, "intercos_membres.xlsx")
 INTERCO_MEMBERS_FILE = os.path.join(DATA_DIR, "interco_members.csv")
-MAIRIES_GEOJSON_FILE = os.path.join(DATA_DIR, "mairies.geojson.gz")
 
 # AOM files (URL à mettre à jour chaque année lors de la publication RT)
 AOM_SOURCE_URL = (
@@ -56,32 +55,6 @@ AOM_SOURCE_URL = (
 AOM_SOURCE_FILE = os.path.join(DATA_DIR, "base-rt-aom.ods")
 AOM_FILE = os.path.join(DATA_DIR, "aom.csv")
 AOM_COMMUNE_FILE = os.path.join(DATA_DIR, "aom_commune.csv")
-
-
-def download_mairies_geojson():
-    """Download mairies GeoJSON source used for mairie point locations."""
-    print("\n" + "=" * 80)
-    print("DOWNLOADING MAIRIES GEOJSON")
-    print("=" * 80)
-
-    if os.path.exists(MAIRIES_GEOJSON_FILE):
-        print(f"✓ Mairies file already exists: {MAIRIES_GEOJSON_FILE}")
-        return MAIRIES_GEOJSON_FILE
-
-    print(f"\n📥 Downloading mairies from {MAIRIES_GEOJSON_URL}...")
-    try:
-        response = requests.get(MAIRIES_GEOJSON_URL, timeout=120)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"❌ Error downloading mairies file: {e}")
-        return None
-
-    with open(MAIRIES_GEOJSON_FILE, "wb") as f:
-        f.write(response.content)
-
-    size_mb = os.path.getsize(MAIRIES_GEOJSON_FILE) / (1024 * 1024)
-    print(f"✓ Saved mairies file to {MAIRIES_GEOJSON_FILE} ({size_mb:.2f} MB)")
-    return MAIRIES_GEOJSON_FILE
 
 def download_communes_siren():
     """Download Banatic dataset data with mapping between siren and cog commune"""
@@ -966,7 +939,6 @@ def download_decoupage_administratif_data(force_aom_download: bool = False):
     download_and_filter_communes()
     download_departements()
     download_regions()
-    download_mairies_geojson()
 
     interco_df = download_interco_list()
     members_df = download_interco_members()

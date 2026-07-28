@@ -294,15 +294,16 @@ def load_commune_geometries(engine):
     # Create unified 'code' column based on entity type
     print(f"  Creating unified 'code' column...")
     def get_code(row):
-        # For arrondissements (ARM), use insee_arm
-        if pd.notna(row.get('insee_arm')):
-            return row['insee_arm']
-        # For communes déléguées/associées (COMD/COMA), use insee_cad
-        elif pd.notna(row.get('insee_cad')):
-            return row['insee_cad']
-        # For communes (COM), use insee_com
-        else:
-            return row.get('insee_com')
+        return row['code_insee']
+        # # For arrondissements (ARM), use code_insee
+        # if pd.notna(row.get('code_insee')):
+        #     return row['code_insee']
+        # # For communes déléguées/associées (COMD/COMA), use insee_cad
+        # elif pd.notna(row.get('code_insee')):
+        #     return row['code_insee']
+        # # For communes (COM), use insee_com
+        # else:
+        #     return row.get('code_insee')
     
     gdf['code'] = gdf.apply(get_code, axis=1)
     print(f"  ✓ Unified 'code' column created")
@@ -1286,15 +1287,16 @@ def create_view(engine):
                 m.nom_interco as nom_interco,
                 m.codes_postaux as codes_postaux,
                 g.code as code_geo,
-                g.insee_com as insee_com_geo,
-                g.insee_arm as insee_arm_geo,
-                g.insee_cad as insee_cad_geo,
-                g.nom as nom_geo,
-                g.nom_m as nom_majuscules_geo,
-                g.insee_can as code_canton_geo,
-                g.insee_arr as code_arrondissement_geo,
-                g.insee_dep as code_departement_geo,
-                g.insee_reg as code_region_geo,
+                -- g.insee_com as insee_com_geo,
+                -- g.insee_arm as insee_arm_geo,
+                -- g.insee_cad as insee_cad_geo,
+                code_insee_de_la_commune_de_rattach,
+                g.nom_officiel as nom_geo,
+                g.nom_officiel_en_majuscules as nom_majuscules_geo,
+                -- g.insee_can as code_canton_geo,
+                -- g.insee_arr as code_arrondissement_geo,
+                g.code_insee_du_departement as code_departement_geo,
+                g.code_insee_de_la_region as code_region_geo,
                 g.statut as statut,
                 g.population as population,
                 g.min_lon as min_lon,
@@ -1308,8 +1310,8 @@ def create_view(engine):
             FROM communes_metadata m
             LEFT JOIN communes_geometries g ON m.com = g.code
               AND (
-                (m.typecom IN ('COM', 'ARM') AND (g.insee_cad IS NULL OR TRIM(g.insee_cad) = ''))
-                OR (m.typecom IN ('COMD', 'COMA') AND g.insee_cad = m.com)
+                (m.typecom IN ('COM', 'ARM') AND (g.code_insee IS NULL OR TRIM(g.code_insee) = ''))
+                OR (m.typecom IN ('COMD', 'COMA') AND g.code_insee = m.com)
               )
             LEFT JOIN communes_mairies ma ON m.com = ma.code_insee
         """
@@ -1563,6 +1565,7 @@ def main():
     create_indexes(engine)
     
     # Create views
+    # import ipdb;ipdb.set_trace()
     create_view(engine)
     create_departements_view(engine)
     create_regions_view(engine)

@@ -56,7 +56,7 @@ def generate_departements_geojson(communes_file_name, tolerance_label):
         dep_code = dep_row['dep']
         
         # Get all communes for this département
-        communes_dep = gdf_communes[gdf_communes['INSEE_DEP'] == dep_code]
+        communes_dep = gdf_communes[gdf_communes['code_insee_du_departement'] == dep_code]
         
         if len(communes_dep) == 0:
             print(f"  ⚠️  No communes found for département {dep_code}")
@@ -134,7 +134,7 @@ def generate_regions_geojson(communes_file_name, tolerance_label):
         reg_code = reg_row['reg']
         
         # Get all communes for this région
-        communes_reg = gdf_communes[gdf_communes['INSEE_REG'] == reg_code]
+        communes_reg = gdf_communes[gdf_communes['code_insee_de_la_region'] == reg_code]
         
         if len(communes_reg) == 0:
             print(f"  ⚠️  No communes found for région {reg_code}")
@@ -207,7 +207,7 @@ def generate_interco_geojson(communes_file_name, tolerance_label):
     print(f"\n🔄 Creating commune code → geometry mapping...")
     commune_geoms = {}
     for idx, row in gdf_communes.iterrows():
-        code = row.get('INSEE_COM')
+        code = row.get('code_insee')
         if code:
             commune_geoms[code] = row.geometry
     
@@ -332,7 +332,7 @@ def generate_aom_geojson(communes_file_name, tolerance_label):
     print(f"\n🔄 Creating commune code → geometry mapping...")
     commune_geoms = {}
     for _, row in gdf_communes.iterrows():
-        code = row.get("INSEE_COM")
+        code = row.get("code_insee")
         if code:
             commune_geoms[code] = row.geometry
     print(f"✓ {len(commune_geoms)} communes indexed")

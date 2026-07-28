@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Script to convert shapefiles to GeoJSON format
-Converts multiple shapefiles from sources/ to GeoJSON files in data/
-Also generates aggregated GeoJSON for départements, régions and intercommunalités
+Script to convert AdminExpress GPKG to GeoJSON format
+Converts multiple GPKG layers from sources/ to GeoJSON files in data/
 """
 
 import geopandas as gpd
@@ -19,24 +18,26 @@ from shapely.geometry import shape, mapping
 SOURCES_DIR = "sources"
 DATA_DIR = "data"
 
-# Shapefiles to convert (shapefile_name: output_name)
-SHAPEFILES_TO_CONVERT = {
-    "COMMUNE.shp": "communes.geojson.gz",
-    "ARRONDISSEMENT_MUNICIPAL.shp": "arrondissements.geojson.gz",
-    "COMMUNE_ASSOCIEE_OU_DELEGUEE.shp": "communes-deleguees-et-associees.geojson.gz"
+GPKG_NAME = 'admin_express.gpkg'
+
+GPKG_LAYERS_TO_CONVERT = {
+    "commune": "communes-admin-express.geojson.gz",
+    "arrondissement_municipal": "arrondissements-columns-to-change.geojson.gz",
+    "commune_associee_ou_deleguee": "communes-deleguees-et-associees.geojson.gz",
+    "collectivite_territoriale": "collectivite_territoriale.geojson.gz"
 }
 
-def convert_shapefile_to_geojson(shapefile_name, output_name):
-    """Convert a single shapefile to GeoJSON format"""
+def convert_gpkg_to_geojson(gpkg_path, layer_name, output_name):
+    """Convert a single GPKG layer to GeoJSON format"""
     
-    input_path = os.path.join(SOURCES_DIR, shapefile_name)
+    input_path = os.path.join(SOURCES_DIR, gpkg_path)
     output_path = os.path.join(DATA_DIR, output_name)
     
     print(f"\n{'='*60}")
-    print(f"Converting {shapefile_name}")
+    print(f"Converting {layer_name}")
     print(f"{'='*60}")
     
-    # Check if shapefile exists
+    # Check if GPKG exists
     if not os.path.exists(input_path):
         print(f"⚠️  Shapefile not found at {input_path}")
         print(f"   Skipping...")
@@ -44,8 +45,8 @@ def convert_shapefile_to_geojson(shapefile_name, output_name):
     
     try:
         # Read shapefile with geopandas
-        print(f"📂 Loading shapefile...")
-        gdf = gpd.read_file(input_path)
+        print(f"📂 Loading GPKG...")
+        gdf = gpd.read_file(input_path, layer=layer_name)
         
         print(f"✓ Loaded {len(gdf)} features")
         print(f"  CRS: {gdf.crs}")
@@ -90,21 +91,21 @@ def convert_shapefile_to_geojson(shapefile_name, output_name):
 def convert_all_shapefiles():
     """Convert all configured shapefiles"""
     print("="*60)
-    print("SHAPEFILE TO GEOJSON CONVERSION")
+    print("GPKG TO GEOJSON CONVERSION")
     print("="*60)
-    print(f"\n{len(SHAPEFILES_TO_CONVERT)} shapefiles to convert:")
-    for shapefile, output in SHAPEFILES_TO_CONVERT.items():
+    print(f"\n{len(GPKG_LAYERS_TO_CONVERT.keys())} layers to convert:")
+    for shapefile, output in GPKG_LAYERS_TO_CONVERT.items():
         print(f"  • {shapefile} → {output}")
     
     success_count = 0
     failed_count = 0
     skipped_count = 0
     
-    for shapefile_name, output_name in SHAPEFILES_TO_CONVERT.items():
-        result = convert_shapefile_to_geojson(shapefile_name, output_name)
+    for layer_name, output_name in GPKG_LAYERS_TO_CONVERT.items():
+        result = convert_gpkg_to_geojson(GPKG_NAME, layer_name, output_name)
         if result:
             success_count += 1
-        elif result is False and os.path.exists(os.path.join(SOURCES_DIR, shapefile_name)):
+        elif result is False and os.path.exists(os.path.join(SOURCES_DIR, layer_name)):
             failed_count += 1
         else:
             skipped_count += 1
@@ -123,7 +124,7 @@ def convert_all_shapefiles():
     if success_count > 0:
         print("\n🎉 Conversion completed!")
         print("\nGenerated files in 'data/' directory:")
-        for shapefile_name, output_name in SHAPEFILES_TO_CONVERT.items():
+        for shapefile_name, output_name in GPKG_LAYERS_TO_CONVERT.items():
             output_path = os.path.join(DATA_DIR, output_name)
             if os.path.exists(output_path):
                 print(f"  ✓ {output_name}")
@@ -149,7 +150,7 @@ def list_available_shapefiles():
             shapefile_path = os.path.join(SOURCES_DIR, shapefile)
             try:
                 gdf = gpd.read_file(shapefile_path)
-                in_config = "✓" if shapefile in SHAPEFILES_TO_CONVERT else " "
+                in_config = "✓" if shapefile in GPKG_LAYERS_TO_CONVERT else " "
                 print(f"  [{in_config}] {shapefile} ({len(gdf)} features)")
             except Exception as e:
                 print(f"  [ ] {shapefile} (error: {e})")
@@ -169,15 +170,15 @@ if __name__ == "__main__":
     
     if args.single:
         # Convert a single shapefile
-        if args.single in SHAPEFILES_TO_CONVERT:
-            output_name = SHAPEFILES_TO_CONVERT[args.single]
-            success = convert_shapefile_to_geojson(args.single, output_name)
+        if args.single in GPKG_LAYERS_TO_CONVERT:
+            output_name = GPKG_LAYERS_TO_CONVERT[args.single]
+            success = convert_gpkg_to_geojson(GPKG_NAME, args.single, output_name)
             sys.exit(0 if success else 1)
         else:
             print(f"❌ Shapefile '{args.single}' not in configuration")
             print(f"\nAvailable shapefiles to convert:")
-            for shp in SHAPEFILES_TO_CONVERT.keys():
-                print(f"  - {shp}")
+            for layer in GPKG_LAYERS_TO_CONVERT.keys():
+                print(f"  - {layer}")
             sys.exit(1)
     
     # Default: convert all shapefiles, then generate aggregated GeoJSON
@@ -193,7 +194,7 @@ if __name__ == "__main__":
         
 
         print("\n📄 Shapefiles converted to GeoJSON:")
-        for output_name in SHAPEFILES_TO_CONVERT.values():
+        for output_name in GPKG_LAYERS_TO_CONVERT.values():
             output_path = os.path.join(DATA_DIR, output_name)
             if os.path.exists(output_path):
                 print(f"  ✓ {output_name}")

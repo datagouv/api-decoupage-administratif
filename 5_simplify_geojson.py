@@ -122,8 +122,8 @@ def simplify_communes_arm_geojson(input_filename_communes, input_filename_arm, t
         if input_path_communes.endswith('.gz'):
             input_path_communes = f"/vsigzip/{input_path_communes}"
         gdf_communes = gpd.read_file(input_path_communes)
-        gdf_communes_no_75056_69123_13055 = gdf_communes[~gdf_communes['INSEE_COM'].isin(["75056", "69123", "13055"])]
-        gdf_communes_only_75056_69123_13055 = gdf_communes[gdf_communes['INSEE_COM'].isin(["75056", "69123", "13055"])]
+        gdf_communes_no_75056_69123_13055 = gdf_communes[~gdf_communes['code_insee'].isin(["75056", "69123", "13055"])]
+        gdf_communes_only_75056_69123_13055 = gdf_communes[gdf_communes['code_insee'].isin(["75056", "69123", "13055"])]
         print(f"({len(gdf_communes)} features)")
         
         # Simplify geometries for communes alone
@@ -136,28 +136,24 @@ def simplify_communes_arm_geojson(input_filename_communes, input_filename_arm, t
         print(f"({len(gdf_arm)} features)")
         
         # Merge ARM and communes without 75056, 69123, 13055 geometries
-        gdf_arm_for_mix = gdf_arm[['INSEE_ARM', 'INSEE_COM', 'geometry']].rename(columns={"INSEE_ARM": "insee", "INSEE_COM": "com"})
+        gdf_arm_for_mix = gdf_arm[['code_insee', 'code_insee_de_la_commune_de_rattach', 'geometry']].rename(columns={"code_insee": "insee", "code_insee_de_la_commune_de_rattach": "com"})
         gdf_arm_for_mix['category'] = 'arm'
-        gdf_communes_no_75056_69123_13055_mix = gdf_communes_no_75056_69123_13055[['INSEE_COM', 'geometry']].rename(columns={"INSEE_COM": "insee"})
+        gdf_communes_no_75056_69123_13055_mix = gdf_communes_no_75056_69123_13055[['code_insee', 'geometry']].rename(columns={"code_insee": "insee"})
         gdf_communes_no_75056_69123_13055_mix['com'] = ''
         gdf_communes_no_75056_69123_13055_mix['category'] = 'com'
         gdf_communes_arm = pd.concat([gdf_communes_no_75056_69123_13055_mix, gdf_arm_for_mix])
         # Simplify
-        gdf_communes_arm['geometry'] = gdf_communes_arm['geometry'].simplify_coverage(tolerance)
-
+        gdf_communes_arm['geometry'] = gdf_communes_arm['geometry'].simplify_coverage(tolerance)         
         gdf_arm_simplified = gdf_communes_arm[gdf_communes_arm['category'] == 'arm']
         only_75056_69123_13055_simplified = gdf_arm_simplified.dissolve(by='com').reset_index()
         only_75056_69123_13055_simplified = only_75056_69123_13055_simplified[['com', 'geometry']].rename(columns={"com": "insee"})
         gdf_communes_simplified = pd.concat([gdf_communes_arm[gdf_communes_arm['category'] == 'com'][['insee', 'geometry']], only_75056_69123_13055_simplified])
-        gdf_communes_updated = pd.merge(gdf_communes, gdf_communes_simplified, left_on='INSEE_COM', right_on='insee')
+        gdf_communes_updated = pd.merge(gdf_communes, gdf_communes_simplified, left_on='code_insee', right_on='insee')
         gdf_communes_updated['geometry'] = gdf_communes_updated['geometry_y']
-        gdf_communes_updated = gdf_communes_updated[['ID', 'NOM', 'NOM_M', 'STATUT', 'INSEE_COM', 'POPULATION', 'date_du_re',
-               'organisme_', 'INSEE_CAN', 'INSEE_ARR', 'INSEE_DEP', 'INSEE_REG',
-               'SIREN_EPCI', 'code_siren', 'code_posta', 'superficie', 'geometry']]
-        gdf_arm_updated = pd.merge(gdf_arm, gdf_arm_simplified, left_on='INSEE_ARM', right_on='insee')
+        gdf_communes_updated = gdf_communes_updated[['code_insee', 'nom_officiel', 'nom_officiel_en_majuscules', 'statut', 'code_insee_du_departement', 'code_insee_de_la_region', 'population', 'superficie_cadastrale', 'geometry']]
+        gdf_arm_updated = pd.merge(gdf_arm, gdf_arm_simplified, left_on='code_insee', right_on='insee')
         gdf_arm_updated['geometry'] = gdf_arm_updated['geometry_y']
-        gdf_arm_updated = gdf_arm_updated[['ID', 'NOM', 'NOM_M', 'numero_de_', 'INSEE_ARM', 'INSEE_COM', 'code_posta', 'POPULATION', 'geometry']]
-        
+        gdf_arm_updated = gdf_arm_updated[['nom_officiel', 'nom_officiel_en_majuscules', 'numero_de_l_arrondissement_municipal', 'code_insee', 'code_insee_de_la_commune_de_rattach', 'code_insee_du_departement', 'statut', 'code_insee_de_la_region', 'code_postal', 'population', 'geometry']]
 
         # Save simplified GeoJSON
         print(f"  📂 Write file to {output_path_arm}")
@@ -275,7 +271,7 @@ def simplify_all_geojson():
         if results:
             file_results_arm["levels"][level_name] = results[0]
             file_results_communes["levels"][level_name] = results[1]
-            completed += 1
+            completed += 2
         elif results is None and not os.path.exists(os.path.join(DATA_DIR, "communes.geojson.gz")) and not os.path.exists(os.path.join(DATA_DIR, "arrondissements.geojson.gz")):
             skipped += 2
         else:
