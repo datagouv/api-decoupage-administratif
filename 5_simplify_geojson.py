@@ -150,10 +150,10 @@ def simplify_communes_arm_geojson(input_filename_communes, input_filename_arm, t
         gdf_communes_simplified = pd.concat([gdf_communes_arm[gdf_communes_arm['category'] == 'com'][['insee', 'geometry']], only_75056_69123_13055_simplified])
         gdf_communes_updated = pd.merge(gdf_communes, gdf_communes_simplified, left_on='code_insee', right_on='insee')
         gdf_communes_updated['geometry'] = gdf_communes_updated['geometry_y']
-        gdf_communes_updated = gdf_communes_updated[['code_insee', 'nom_officiel', 'nom_officiel_en_majuscules', 'statut', 'code_insee_du_departement', 'code_insee_de_la_region', 'population', 'superficie_cadastrale', 'geometry']]
+        gdf_communes_updated = gdf_communes_updated[['code_insee', 'nom_officiel', 'nom_officiel_en_majuscules', 'statut', 'code_insee_du_departement', 'code_insee_de_la_region', 'population', 'superficie_cadastrale', 'zone', 'geometry']]
         gdf_arm_updated = pd.merge(gdf_arm, gdf_arm_simplified, left_on='code_insee', right_on='insee')
         gdf_arm_updated['geometry'] = gdf_arm_updated['geometry_y']
-        gdf_arm_updated = gdf_arm_updated[['nom_officiel', 'nom_officiel_en_majuscules', 'numero_de_l_arrondissement_municipal', 'code_insee', 'code_insee_de_la_commune_de_rattach', 'code_insee_du_departement', 'statut', 'code_insee_de_la_region', 'code_postal', 'population', 'geometry']]
+        gdf_arm_updated = gdf_arm_updated[['nom_officiel', 'nom_officiel_en_majuscules', 'numero_de_l_arrondissement_municipal', 'code_insee', 'code_insee_de_la_commune_de_rattach', 'code_insee_du_departement', 'code_insee_de_la_region', 'code_postal', 'population', 'zone', 'geometry']]
 
         # Save simplified GeoJSON
         print(f"  📂 Write file to {output_path_arm}")

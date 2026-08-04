@@ -6,11 +6,12 @@ Géométries stockées en WKT + GeoJSON pré-calculé (pas d'extension spatiale 
 
 import os
 import sys
-import geopandas as gpd
-from sqlalchemy import create_engine, text
-import pandas as pd
 import gzip
 import json
+import geopandas as gpd
+import pandas as pd
+from sqlalchemy import create_engine, text
+import numpy as np
 
 from shapely import wkt as shapely_wkt
 from shapely.geometry import mapping
@@ -29,6 +30,7 @@ DATA_DIR = "data"
 # Intercommunalités, départements, régions: medium precision (10m)
 
 COMMUNES_CSV = os.path.join(DATA_DIR, "communes.csv")
+COMMUNES_COM_CSV = os.path.join("assets", "collectivites-outremer.csv")
 COMMUNES_GEOJSON = os.path.join(DATA_DIR, "communes_5m.geojson.gz")  # 5m precision
 ARRONDISSEMENTS_CSV = os.path.join(DATA_DIR, "arrondissements.csv")
 ARRONDISSEMENTS_GEOJSON = os.path.join(DATA_DIR, "arrondissements_5m.geojson.gz")  # 5m precision
@@ -186,6 +188,20 @@ def load_commune_data(engine):
         dataframes.append(df_com)
     else:
         print(f"⚠️  File not found: {COMMUNES_CSV}")
+
+    # Load communes from collectivités Outre-Mer
+    if os.path.exists(COMMUNES_COM_CSV):
+        df_communes_com = pd.read_csv(COMMUNES_COM_CSV, encoding='utf-8', dtype=str) #, na_filter=False, keep_default_na=False).replace(r'^\s*$', np.nan, regex=True)
+        df_communes_com = df_communes_com.rename(columns={"code_postal": "codes_postaux", "nom_commune": "LIBELLE", "code_collectivite": "DEP", "code_commune": "COM"}).drop(columns=["nom_collectivite", "population"])
+        df_communes_com['NCCENR'] = df_communes_com['LIBELLE']
+        df_communes_com['NCC'] = df_communes_com['LIBELLE'].str.upper()
+        df_communes_com['REG'] = df_communes_com['DEP']
+        df_communes_com['TYPECOM'] = "COM"
+        df_communes_com['codes_postaux'] = df_communes_com['codes_postaux'].str.replace('|', ',')
+        print(f"✓ Loaded {len(df_communes_com)} communes (TYPECOM='COM') for Outre-Mer")
+        dataframes.append(df_communes_com)
+    else:
+        print(f"⚠️  File not found: {COMMUNES_COM_CSV}")
     
     # Load arrondissements (ARM)
     if os.path.exists(ARRONDISSEMENTS_CSV):
@@ -277,9 +293,10 @@ def load_commune_geometries(engine):
         print(f"❌ No GeoJSON files found!")
         print("Please run 2_download_geometries_ign.py and 3_convert_shape_into_geojson.py first")
         sys.exit(1)
-    
+
     # Concatenate all geodataframes
     gdf = pd.concat(geodataframes, ignore_index=True)
+    gdf = gdf.fillna(value=np.nan)
     gdf = gpd.GeoDataFrame(gdf, geometry='geometry', crs=geodataframes[0].crs)
     
     print(f"\n✓ Total entities with geometries: {len(gdf)}")
@@ -335,6 +352,15 @@ def load_commune_geometries(engine):
 
     print("  Loading geometries to database...")
     gdf.to_sql(table_name, engine, if_exists="replace", index=False)
+    queries_fix_type = [
+        f"""ALTER TABLE {table_name} ADD COLUMN population_fix INTEGER;""",
+        f"""UPDATE {table_name} SET population_fix = CAST(population as INTEGER);""",
+        f"""ALTER TABLE {table_name} DROP COLUMN population;""",
+        f"""ALTER TABLE {table_name} RENAME COLUMN population_fix TO population;""",
+    ]
+    with engine.connect() as conn:
+        for query in queries_fix_type:
+            conn.execute(text(query))
 
     print(f"✓ All geometries loaded into table '{table_name}'")
     
@@ -834,7 +860,6 @@ def load_commune_interco_associations(engine):
     print(f"  {len(associations)} associations before deduplication")
     
     # Separate direct commune associations from interco-to-interco associations
-    # import ipdb;ipdb.set_trace()
     commune_associations = associations[associations['membre_categorie'] == 'commune'].copy()
     interco_to_interco = associations[associations['membre_categorie'] == 'groupement'].copy()
     
@@ -1223,6 +1248,12 @@ def create_indexes(engine):
             ON communes_metadata(nom_recherche)
         """))
 
+        print("  Creating index on communes_metadata.libelle...")
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_communes_metadata_libelle
+            ON communes_metadata(libelle)
+        """))
+
         print("  Creating index on interco_metadata.nom_recherche...")
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_interco_metadata_nom_recherche
@@ -1298,6 +1329,7 @@ def create_view(engine):
                 g.code_insee_du_departement as code_departement_geo,
                 g.code_insee_de_la_region as code_region_geo,
                 g.statut as statut,
+                g.zone as zone,
                 g.population as population,
                 g.min_lon as min_lon,
                 g.min_lat as min_lat,
@@ -1308,12 +1340,12 @@ def create_view(engine):
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM communes_metadata m
-            LEFT JOIN communes_geometries g ON m.com = g.code
+            LEFT JOIN communes_geometries g ON m.com = g.code_insee
               AND (
-                (m.typecom IN ('COM', 'ARM') AND (g.code_insee IS NULL OR TRIM(g.code_insee) = ''))
-                OR (m.typecom IN ('COMD', 'COMA') AND g.code_insee = m.com)
+                (m.typecom IN ('COM', 'ARM') AND g.code_insee = m.com AND g.nature IS NULL)
+                OR (m.typecom IN ('COMD', 'COMA') AND g.code_insee = m.com AND g.nature IN ('COMD', 'COMA'))
               )
-            LEFT JOIN communes_mairies ma ON m.com = ma.code_insee
+            LEFT JOIN communes_mairies ma ON (m.com = ma.code_insee AND m.typecom = 'COM')
         """
         
         conn.execute(text(view_sql))
@@ -1565,7 +1597,6 @@ def main():
     create_indexes(engine)
     
     # Create views
-    # import ipdb;ipdb.set_trace()
     create_view(engine)
     create_departements_view(engine)
     create_regions_view(engine)

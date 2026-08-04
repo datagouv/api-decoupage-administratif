@@ -847,7 +847,7 @@ def build_commune_properties(
             properties.pop("codeEpci", None)
 
     if "zone" in requested_fields and code_insee:
-        properties["zone"] = commune_zone(code_insee)
+        properties.pop("zone", None)
 
     if "geometry_geojson" in list_properties and (
         "centre" in requested_fields
@@ -1001,6 +1001,7 @@ def list_commune_entities(
     fields: Optional[str] = None,
     boost: Optional[str] = None,
     limit: Optional[int] = None,
+    zone: Optional[str] = None,
     offset: int = 0,
 ):
     nom_recherche = None
@@ -1055,6 +1056,12 @@ def list_commune_entities(
     if code_postal:
         query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
         params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
+
+    if zone and all([z.strip() in ('metro', 'drom', 'com') for z in zone.split(',')]):
+        zones = [f"'{z.strip()}'" for z in zone.split(',')]
+        # query += f" AND zone IN (:zone)"
+        query += f" AND zone IN ({','.join(zones)})"
+        # params['zone'] = f"{','.join(zones)}"
 
     use_parent = config.enrich_from_parent
     if code_departement:
@@ -1161,6 +1168,9 @@ _COMMUNE_LIST_PARAMS = {
         description="Alias de codeDepartement (déprécié)",
         deprecated=True,
     ),
+    "zone": Query(
+        None, description="Filtrer par zone e.g metro, drom, com"
+    ),
     "region": Query(None, description="Filtrer par code région"),
     "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
     "boost": Query(
@@ -1224,6 +1234,7 @@ async def list_communes(
     departement: Optional[str] = _COMMUNE_LIST_PARAMS["departement"],
     region: Optional[str] = _COMMUNE_LIST_PARAMS["region"],
     fields: Optional[str] = _COMMUNE_LIST_PARAMS["fields"],
+    zone: Optional[str] = _COMMUNE_LIST_PARAMS["zone"],
     boost: Optional[str] = _COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = _COMMUNE_LIST_PARAMS["limit"],
     offset: int = _COMMUNE_LIST_PARAMS["offset"],
@@ -1245,6 +1256,7 @@ async def list_communes(
             code_postal=codePostal,
             code_departement=dep_code,
             region=region,
+            zone=zone,
             fields=fields,
             boost=boost,
             limit=limit,

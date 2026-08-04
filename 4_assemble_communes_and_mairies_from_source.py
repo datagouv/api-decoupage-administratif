@@ -75,12 +75,12 @@ def fix_arrondissements_columns():
     gdf_arm = gdf_communes_admin_express = gpd.read_file('/vsigzip/' + arm_path)
     # gdf_arm.loc[:, ["statut", "superficie_cadastrale"]] = np.nan
     gdf_arm["code_insee_du_departement"] = gdf_arm['code_insee'].str.slice(0, 2)
-    gdf_arm["statut"] = 'arrondissement-municipal'
+    gdf_arm["zone"] = 'metro'
     gdf_arm['code_insee_de_la_region'] = gdf_arm['code_insee_du_departement'].apply(add_arm_reg_columns)
     gdf_arm = gdf_arm[['nom_officiel', 'nom_officiel_en_majuscules',
                'numero_de_l_arrondissement_municipal', 'code_insee',
                'code_insee_de_la_commune_de_rattach', 'code_postal', 'population',
-               'geometry', 'code_insee_du_departement', 'statut',
+               'geometry', 'code_insee_du_departement', 'zone',
                'code_insee_de_la_region']]
     uncompress_output = os.path.join(DATA_DIR, 'arrondissements.geojson')
     gdf_arm.to_file(uncompress_output, driver='GeoJSON', encoding='utf-8')
@@ -90,7 +90,7 @@ def fix_arrondissements_columns():
     Path(uncompress_output).unlink(missing_ok=True)
 
 def merge_communes():
-    infos_for_regions_depts_com = pd.read_csv(INFOS_FOR_REGIONS_DEPTS_COM, dtype='string')
+    infos_for_regions_depts_com = pd.read_csv(INFOS_FOR_REGIONS_DEPTS_COM, dtype='string').map(lambda x: np.nan if x is pd.NaT else x)
     print(f"\n{'='*60}")
     print(f"Load and reformat columns for Admin Express communes")
     print(f"{'='*60}")
@@ -129,11 +129,17 @@ def merge_communes():
     gdf_communes_not_from_admin_express['code_insee_de_la_region'] = gdf_communes_not_from_admin_express['code_collectivite']
     gdf_communes_not_from_admin_express['nom_officiel_en_majuscules'] = gdf_communes_not_from_admin_express['nom_officiel'].str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode("utf-8").str.upper()
     gdf_communes_not_from_admin_express = gdf_communes_not_from_admin_express[['code_insee', 'nom_officiel', 'nom_officiel_en_majuscules', 'statut', 'code_insee_du_departement', 'code_insee_de_la_region', 'population', 'superficie_cadastrale', 'geometry']]
-
+    
     print(f"\n{'='*60}")
     print(f"Concat all communes sources and write to a compressed\ngeojson file")
     print(f"{'='*60}")
     gdf = pd.concat([gdf_communes_admin_express, gdf_communes_not_from_admin_express, gdf_collectivites_territoriales_admin_express_977_978])
+    gdf['zone'] = np.nan
+    gdf['zone'] = gdf['zone'].astype('string')
+    gdf.loc[gdf['code_insee_du_departement'].str.len() == 2, "zone"] = 'metro'
+    gdf.loc[gdf['code_insee_du_departement'].isin(["971", "972", "973", "974", "976"]), "zone"] = 'drom'
+    gdf.loc[gdf['zone'].isna(), "zone"] = 'com'
+    gdf.population = gdf.population.astype('string').replace('<NA>', '')
     uncompress_output = os.path.join(DATA_DIR, 'communes.geojson')
     gdf.to_file(uncompress_output, driver='GeoJSON', encoding='utf-8')
     with open(uncompress_output, 'rb') as orig_file:
