@@ -291,7 +291,7 @@ def load_commune_geometries(engine):
     
     if not geodataframes:
         print(f"❌ No GeoJSON files found!")
-        print("Please run 2_download_geometries_ign.py and 3_convert_shape_into_geojson.py first")
+        print("Please run 2_download_geometries_ign.py, 3_convert_admin_express_into_geojson.py, 4_assemble_communes_and_mairies_from_source.py, 5_simplify_geojson.py and 6_assemble_by_admin_units.py first")
         sys.exit(1)
 
     # Concatenate all geodataframes

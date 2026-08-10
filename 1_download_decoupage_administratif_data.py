@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python33
 """
 Télécharge et prépare les données de découpage administratif et assimilées.
 
@@ -958,9 +958,10 @@ if __name__ == "__main__":
     print("  ✓ Départements et régions")
     print("  ✓ Intercommunalités (avec communes résolues)")
     print("  ✓ AOM (aom.csv, aom_commune.csv)")
-    print("  ✓ Mairies GeoJSON")
     print("\nNext steps:")
     print("  1. python3 2_download_geometries_ign.py")
-    print("  2. python3 3_convert_shape_into_geojson.py")
-    print("  3. python3 4_simplify_geojson.py")
-    print("  4. python3 5_load_into_spatialite.py")
+    print("  2. python3 3_convert_admin_express_into_geojson.py")
+    print("  3. python3 4_assemble_communes_and_mairies_from_source.py")
+    print("  4. python3 5_simplify_geojson.py")
+    print("  5. python3 6_assemble_by_admin_units.py")
+    print("  6. python3 7_load_into_spatialite.py")
