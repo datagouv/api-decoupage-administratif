@@ -35,7 +35,7 @@ class CommuneResponseSchema(BaseModel):
     codesPostaux: Optional[List[str]] = Field(None, description="Liste des codes postaux de la commune (La Poste)")
     population: Optional[float] = Field(None, description="Population")
     surface: Optional[float] = Field(None, description="Surface de la commune en hectares")
-    zone: Optional[str] = Field(None, description="Zone : metro ou drom")
+    zone: Optional[str] = Field(None, description="Zone : metro, drom ou com")
     contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON de la commune")
     centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point) de la commune")
     bbox: Optional[Dict[str, Any]] = Field(None, description="Bounding box GeoJSON (Polygon)")

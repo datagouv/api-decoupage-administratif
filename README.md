@@ -15,24 +15,38 @@ Basé sur le **COG INSEE**, les géométries **IGN Admin Express**, **Banatic**,
 
 ### Installation complète
 
+Préparer l'environnement avec
+
 ```bash
+uv venv venv
+source venv/bin/activate
+```
+
+```bash
+
 # 1. Installer les dépendances
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # 2. Télécharger les données administratives (COG, Banatic, AOM, intercos…)
 python3 1_download_decoupage_administratif_data.py
 
-# 3. Télécharger les géométries IGN
+# 3. Télécharger les géométries IGN et OSM pour les COM (collectivités d'Outre Mer)
 python3 2_download_geometries_ign.py
 
-# 4. Convertir en GeoJSON + agrégations (départements, régions, intercos, AOM)
-python3 3_convert_shape_into_geojson.py
+# 4. Convertir depuis les GPKG en GeoJSON depuis Admin Express (commune, arrondissement_municipal, commune_associee_ou_deleguee, collectivite_territoriale")
+python3 3_convert_admin_express_into_geojson.py
 
-# 5. Simplifier les GeoJSON (5m, 10m, 100m, 1000m)
-python3 4_simplify_geojson.py
+# 5. Assemble communes from sources AdminExpress and OSM, generate data for mairies
+python3 4_assemble_communes_and_mairies_from_source.py
+
+# 6. Simplifier les GeoJSON des communes, des arrondissements municpaux et des communes déléguées et associées, (5m, 10m, 100m, 1000m)
+python3 5_simplify_geojson.py
+
+# 7. Assembler les unités administratives supérieures depuis les données simplifiées des communes (régions, départements, intercommunalités, AOM)
+python3 6_assemble_by_admin_units.py
 
 # 6. Charger dans SQLite
-python3 5_load_into_spatialite.py
+python3 7_load_into_spatialite.py
 
 # 7. Lancer l'API
 uvicorn app.main:app --reload
@@ -46,9 +60,11 @@ L'API est accessible sur **http://localhost:8000**
 # Préparer les données (une fois, en local)
 python3 1_download_decoupage_administratif_data.py
 python3 2_download_geometries_ign.py
-python3 3_convert_shape_into_geojson.py
-python3 4_simplify_geojson.py
-python3 5_load_into_spatialite.py
+python3 3_convert_admin_express_into_geojson.py
+python3 4_assemble_communes_and_mairies_from_source.py
+python3 5_simplify_geojson.py
+python3 6_assemble_by_admin_units.py
+python3 7_load_into_spatialite.py
 
 # Lancer l'API
 docker-compose up

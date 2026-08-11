@@ -39,7 +39,7 @@ def reset_database():
             print("="*60)
             print("")
             print("You can now run:")
-            print("  python3 5_load_into_spatialite.py")
+            print("  python 7_load_into_spatialite.py")
             print("")
             
         except Exception as e:

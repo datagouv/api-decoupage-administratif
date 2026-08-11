@@ -1,159 +1,32 @@
-#!/usr/bin/env python3
-"""
-Script to convert shapefiles to GeoJSON format
-Converts multiple shapefiles from sources/ to GeoJSON files in data/
-Also generates aggregated GeoJSON for départements, régions and intercommunalités
-"""
-
-import geopandas as gpd
-import pandas as pd
+import json
 import os
 import sys
-import json
+import gzip
+
+import pandas as pd
+import geopandas as gpd
 from shapely.ops import unary_union
-from shapely.geometry import shape, mapping
+from shapely.geometry import mapping
 
 # Paths
-SOURCES_DIR = "sources"
 DATA_DIR = "data"
 
-# Shapefiles to convert (shapefile_name: output_name)
-SHAPEFILES_TO_CONVERT = {
-    "COMMUNE.shp": "communes.geojson",
-    "ARRONDISSEMENT_MUNICIPAL.shp": "arrondissements.geojson",
-    "COMMUNE_ASSOCIEE_OU_DELEGUEE.shp": "communes-deleguees-et-associees.geojson"
-}
+SIMPLIFICATION_LEVELS_TITLES = [
+    "5m",
+    "10m",
+    "100m",
+    "1000m",
+]
 
-def convert_shapefile_to_geojson(shapefile_name, output_name):
-    """Convert a single shapefile to GeoJSON format"""
-    
-    input_path = os.path.join(SOURCES_DIR, shapefile_name)
-    output_path = os.path.join(DATA_DIR, output_name)
-    
-    print(f"\n{'='*60}")
-    print(f"Converting {shapefile_name}")
-    print(f"{'='*60}")
-    
-    # Check if shapefile exists
-    if not os.path.exists(input_path):
-        print(f"⚠️  Shapefile not found at {input_path}")
-        print(f"   Skipping...")
-        return False
-    
-    try:
-        # Read shapefile with geopandas
-        print(f"📂 Loading shapefile...")
-        gdf = gpd.read_file(input_path)
-        
-        print(f"✓ Loaded {len(gdf)} features")
-        print(f"  CRS: {gdf.crs}")
-        print(f"  Columns: {', '.join(gdf.columns)}")
-        print(f"  Geometry types: {', '.join(gdf.geometry.type.unique())}")
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(DATA_DIR, exist_ok=True)
-        
-        # Convert to GeoJSON and save
-        print(f"🔄 Converting to GeoJSON...")
-        gdf.to_file(output_path, driver='GeoJSON', encoding='utf-8')
-        
-        # Get file size for reporting
-        file_size = os.path.getsize(output_path)
-        file_size_mb = file_size / (1024 * 1024)
-        
-        print(f"✓ GeoJSON saved to {output_path}")
-        print(f"✓ File size: {file_size_mb:.2f} MB")
-        print(f"✓ {len(gdf)} features converted successfully")
-        
-        # Display sample of the data
-        if len(gdf) > 0:
-            first_feature = gdf.iloc[0]
-            print(f"\n📋 Sample attributes:")
-            for key, value in dict(first_feature.drop('geometry')).items():
-                print(f"  - {key}: {value}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error during conversion: {e}")
-        return False
-
-def convert_all_shapefiles():
-    """Convert all configured shapefiles"""
-    print("="*60)
-    print("SHAPEFILE TO GEOJSON CONVERSION")
-    print("="*60)
-    print(f"\n{len(SHAPEFILES_TO_CONVERT)} shapefiles to convert:")
-    for shapefile, output in SHAPEFILES_TO_CONVERT.items():
-        print(f"  • {shapefile} → {output}")
-    
-    success_count = 0
-    failed_count = 0
-    skipped_count = 0
-    
-    for shapefile_name, output_name in SHAPEFILES_TO_CONVERT.items():
-        result = convert_shapefile_to_geojson(shapefile_name, output_name)
-        if result:
-            success_count += 1
-        elif result is False and os.path.exists(os.path.join(SOURCES_DIR, shapefile_name)):
-            failed_count += 1
-        else:
-            skipped_count += 1
-    
-    # Summary
-    print("\n" + "="*60)
-    print("SUMMARY")
-    print("="*60)
-    print(f"✓ Successfully converted: {success_count}")
-    if skipped_count > 0:
-        print(f"⚠️  Skipped (file not found): {skipped_count}")
-    if failed_count > 0:
-        print(f"❌ Failed: {failed_count}")
-    print("="*60)
-    
-    if success_count > 0:
-        print("\n🎉 Conversion completed!")
-        print("\nGenerated files in 'data/' directory:")
-        for shapefile_name, output_name in SHAPEFILES_TO_CONVERT.items():
-            output_path = os.path.join(DATA_DIR, output_name)
-            if os.path.exists(output_path):
-                print(f"  ✓ {output_name}")
-    
-    return success_count > 0
-
-def list_available_shapefiles():
-    """List all available shapefiles in the sources directory"""
-    print(f"\n{'='*60}")
-    print(f"Available shapefiles in {SOURCES_DIR}/")
-    print("="*60)
-    
-    if not os.path.exists(SOURCES_DIR):
-        print(f"❌ Directory {SOURCES_DIR} not found!")
-        return
-    
-    shapefiles = sorted([f for f in os.listdir(SOURCES_DIR) if f.endswith('.shp')])
-    
-    if not shapefiles:
-        print("  No shapefiles found")
-    else:
-        for shapefile in shapefiles:
-            shapefile_path = os.path.join(SOURCES_DIR, shapefile)
-            try:
-                gdf = gpd.read_file(shapefile_path)
-                in_config = "✓" if shapefile in SHAPEFILES_TO_CONVERT else " "
-                print(f"  [{in_config}] {shapefile} ({len(gdf)} features)")
-            except Exception as e:
-                print(f"  [ ] {shapefile} (error: {e})")
-
-def generate_departements_geojson():
+def generate_departements_geojson(communes_file_name, tolerance_label):
     """Generate GeoJSON for départements by merging commune geometries"""
     print("\n" + "="*60)
-    print("GENERATING DÉPARTEMENTS GEOJSON")
+    print(f"GENERATING DÉPARTEMENTS GEOJSON FOR TOLERANCE LABEL {tolerance_label}")
     print("="*60)
     
-    communes_path = os.path.join(DATA_DIR, "communes.geojson")
+    communes_path = os.path.join(DATA_DIR, communes_file_name)
     departements_csv = os.path.join(DATA_DIR, "departements.csv")
-    output_path = os.path.join(DATA_DIR, "departements.geojson")
+    output_path = os.path.join(DATA_DIR, f"departements_{tolerance_label}.geojson.gz")
     
     if not os.path.exists(communes_path):
         print(f"⚠️  {communes_path} not found. Run this script without --aggregate first.")
@@ -164,6 +37,8 @@ def generate_departements_geojson():
         return False
     
     print(f"\n📂 Loading communes GeoJSON...")
+    if communes_path.endswith(communes_path):
+        communes_path = f"/vsigzip/{communes_path}"
     gdf_communes = gpd.read_file(communes_path)
     print(f"✓ Loaded {len(gdf_communes)} communes")
     
@@ -181,7 +56,7 @@ def generate_departements_geojson():
         dep_code = dep_row['dep']
         
         # Get all communes for this département
-        communes_dep = gdf_communes[gdf_communes['INSEE_DEP'] == dep_code]
+        communes_dep = gdf_communes[gdf_communes['code_insee_du_departement'] == dep_code]
         
         if len(communes_dep) == 0:
             print(f"  ⚠️  No communes found for département {dep_code}")
@@ -212,7 +87,7 @@ def generate_departements_geojson():
     
     # Save to file
     print(f"\n💾 Saving to {output_path}...")
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with gzip.open(output_path, 'wt', encoding='UTF-8') as f:
         json.dump(geojson, f, ensure_ascii=False)
     
     file_size = os.path.getsize(output_path) / (1024 * 1024)
@@ -221,15 +96,15 @@ def generate_departements_geojson():
     
     return True
 
-def generate_regions_geojson():
+def generate_regions_geojson(communes_file_name, tolerance_label):
     """Generate GeoJSON for régions by merging commune geometries"""
     print("\n" + "="*60)
-    print("GENERATING RÉGIONS GEOJSON")
+    print(f"GENERATING RÉGIONS GEOJSON FOR TOLERANCE LABEL {tolerance_label}")
     print("="*60)
     
-    communes_path = os.path.join(DATA_DIR, "communes.geojson")
+    communes_path = os.path.join(DATA_DIR, communes_file_name)
     regions_csv = os.path.join(DATA_DIR, "regions.csv")
-    output_path = os.path.join(DATA_DIR, "regions.geojson")
+    output_path = os.path.join(DATA_DIR, f"regions_{tolerance_label}.geojson.gz")
     
     if not os.path.exists(communes_path):
         print(f"⚠️  {communes_path} not found. Run this script without --aggregate first.")
@@ -240,6 +115,8 @@ def generate_regions_geojson():
         return False
     
     print(f"\n📂 Loading communes GeoJSON...")
+    if communes_path.endswith('.gz'):
+        communes_path = f"/vsigzip/{communes_path}"
     gdf_communes = gpd.read_file(communes_path)
     print(f"✓ Loaded {len(gdf_communes)} communes")
     
@@ -257,7 +134,7 @@ def generate_regions_geojson():
         reg_code = reg_row['reg']
         
         # Get all communes for this région
-        communes_reg = gdf_communes[gdf_communes['INSEE_REG'] == reg_code]
+        communes_reg = gdf_communes[gdf_communes['code_insee_de_la_region'] == reg_code]
         
         if len(communes_reg) == 0:
             print(f"  ⚠️  No communes found for région {reg_code}")
@@ -288,7 +165,8 @@ def generate_regions_geojson():
     
     # Save to file
     print(f"\n💾 Saving to {output_path}...")
-    with open(output_path, 'w', encoding='utf-8') as f:
+
+    with gzip.open(output_path, 'wt', encoding='UTF-8') as f:
         json.dump(geojson, f, ensure_ascii=False)
     
     file_size = os.path.getsize(output_path) / (1024 * 1024)
@@ -297,15 +175,15 @@ def generate_regions_geojson():
     
     return True
 
-def generate_interco_geojson():
+def generate_interco_geojson(communes_file_name, tolerance_label):
     """Generate GeoJSON for intercommunalités by merging commune geometries"""
     print("\n" + "="*60)
-    print("GENERATING INTERCOMMUNALITÉS GEOJSON")
+    print(f"GENERATING INTERCOMMUNALITÉS GEOJSON FOR TOLERANCE LABEL {tolerance_label}")
     print("="*60)
     
-    communes_path = os.path.join(DATA_DIR, "communes.geojson")
+    communes_path = os.path.join(DATA_DIR, communes_file_name)
     interco_csv = os.path.join(DATA_DIR, "interco_enriched.csv")
-    output_path = os.path.join(DATA_DIR, "intercommunalites.geojson")
+    output_path = os.path.join(DATA_DIR, f"intercommunalites_{tolerance_label}.geojson.gz")
     
     if not os.path.exists(communes_path):
         print(f"⚠️  {communes_path} not found. Run this script without --aggregate first.")
@@ -316,6 +194,8 @@ def generate_interco_geojson():
         return False
     
     print(f"\n📂 Loading communes GeoJSON...")
+    if communes_path.endswith('.gz'):
+        communes_path = f"/vsigzip/{communes_path}"
     gdf_communes = gpd.read_file(communes_path)
     print(f"✓ Loaded {len(gdf_communes)} communes")
     
@@ -327,7 +207,7 @@ def generate_interco_geojson():
     print(f"\n🔄 Creating commune code → geometry mapping...")
     commune_geoms = {}
     for idx, row in gdf_communes.iterrows():
-        code = row.get('INSEE_COM')
+        code = row.get('code_insee')
         if code:
             commune_geoms[code] = row.geometry
     
@@ -398,7 +278,7 @@ def generate_interco_geojson():
     
     # Save to file
     print(f"\n💾 Saving to {output_path}...")
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with gzip.open(output_path, 'wt', encoding='UTF-8') as f:
         json.dump(geojson, f, ensure_ascii=False)
     
     file_size = os.path.getsize(output_path) / (1024 * 1024)
@@ -407,22 +287,22 @@ def generate_interco_geojson():
     
     # Generate separate GeoJSON by nature_juridique
     print(f"\n🔄 Generating GeoJSON by nature juridique...")
-    generate_interco_by_nature(df_interco, commune_geoms)
+    generate_interco_by_nature(df_interco, commune_geoms, tolerance_label)
     
     return True
 
 
-def generate_aom_geojson():
+def generate_aom_geojson(communes_file_name, tolerance_label):
     """Generate GeoJSON for AOM by merging commune geometries of their members."""
     print("\n" + "=" * 60)
-    print("GENERATING AOM GEOJSON")
+    print(f"GENERATING AOM GEOJSON FOR TOLERANCE LABEL {tolerance_label}")
     print("=" * 60)
 
-    communes_path = os.path.join(DATA_DIR, "communes.geojson")
+    communes_path = os.path.join(DATA_DIR, communes_file_name)
     aom_csv = os.path.join(DATA_DIR, "aom.csv")
     aom_commune_csv = os.path.join(DATA_DIR, "aom_commune.csv")
     mapping_csv = os.path.join(DATA_DIR, "siren_insee_mapping.csv")
-    output_path = os.path.join(DATA_DIR, "aom.geojson")
+    output_path = os.path.join(DATA_DIR, f"aom_{tolerance_label}.geojson.gz")
 
     required = {
         communes_path: "communes.geojson (run shapefile conversion first)",
@@ -436,6 +316,8 @@ def generate_aom_geojson():
             return False
 
     print(f"\n📂 Loading communes GeoJSON...")
+    if communes_path.endswith('.gz'):
+        communes_path = f"/vsigzip/{communes_path}"
     gdf_communes = gpd.read_file(communes_path)
     print(f"✓ Loaded {len(gdf_communes)} communes")
 
@@ -450,7 +332,7 @@ def generate_aom_geojson():
     print(f"\n🔄 Creating commune code → geometry mapping...")
     commune_geoms = {}
     for _, row in gdf_communes.iterrows():
-        code = row.get("INSEE_COM")
+        code = row.get("code_insee")
         if code:
             commune_geoms[code] = row.geometry
     print(f"✓ {len(commune_geoms)} communes indexed")
@@ -511,7 +393,7 @@ def generate_aom_geojson():
 
     geojson = {"type": "FeatureCollection", "features": aom_features}
     print(f"\n💾 Saving to {output_path}...")
-    with open(output_path, "w", encoding="utf-8") as f:
+    with gzip.open(output_path, 'wt', encoding='UTF-8') as f:
         json.dump(geojson, f, ensure_ascii=False)
 
     file_size = os.path.getsize(output_path) / (1024 * 1024)
@@ -520,7 +402,7 @@ def generate_aom_geojson():
     return True
 
 
-def generate_interco_by_nature(df_interco, commune_geoms):
+def generate_interco_by_nature(df_interco, commune_geoms, tolerance_label):
     """Generate separate GeoJSON files for each nature_juridique"""
     
     # Get unique nature_juridique values
@@ -530,9 +412,9 @@ def generate_interco_by_nature(df_interco, commune_geoms):
     for nature in natures:
         # Clean nature for filename (remove special characters)
         nature_clean = nature.replace('/', '_').replace(' ', '_').replace("'", '').lower()
-        output_path = os.path.join(DATA_DIR, f"intercommunalites_{nature_clean}.geojson")
+        output_path = os.path.join(DATA_DIR, f"intercommunalites_{nature_clean}_{tolerance_label}.geojson.gz")
         
-        print(f"\n  Processing: {nature}")
+        print(f"\n  Processing: {nature} for tolerance {tolerance_label}")
         
         # Filter intercommunalités for this nature
         df_filtered = df_interco[df_interco['nature_juridique'] == nature]
@@ -593,77 +475,51 @@ def generate_interco_by_nature(df_interco, commune_geoms):
         }
         
         # Save to file
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with gzip.open(output_path, 'wt', encoding='UTF-8') as f:
             json.dump(geojson, f, ensure_ascii=False)
         
         file_size = os.path.getsize(output_path) / (1024 * 1024)
         print(f"    ✓ Saved {len(features)} features ({file_size:.2f} MB)")
 
+
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='Convert shapefiles to GeoJSON and generate aggregated GeoJSON')
-    parser.add_argument('--list', action='store_true', help='List available shapefiles')
-    parser.add_argument('--single', type=str, help='Convert a single shapefile')
-    parser.add_argument('--aggregate-only', action='store_true', help='Only generate aggregated GeoJSON (departements, regions, intercommunalites)')
+    parser = argparse.ArgumentParser(description='Generate aggregated GeoJSON (departements, regions, intercommunalites)')
     args = parser.parse_args()
     
-    if args.list:
-        list_available_shapefiles()
-        sys.exit(0)
-    
-    if args.single:
-        # Convert a single shapefile
-        if args.single in SHAPEFILES_TO_CONVERT:
-            output_name = SHAPEFILES_TO_CONVERT[args.single]
-            success = convert_shapefile_to_geojson(args.single, output_name)
-            sys.exit(0 if success else 1)
-        else:
-            print(f"❌ Shapefile '{args.single}' not in configuration")
-            print(f"\nAvailable shapefiles to convert:")
-            for shp in SHAPEFILES_TO_CONVERT.keys():
-                print(f"  - {shp}")
-            sys.exit(1)
-    
+        
     # Default: convert all shapefiles, then generate aggregated GeoJSON
     try:
-        if not args.aggregate_only:
-            success = convert_all_shapefiles()
-            if not success:
-                print("\n⚠️  Shapefile conversion had issues, but will try to generate aggregated GeoJSON anyway...")
-        
         # Generate aggregated GeoJSON
         print("\n" + "="*60)
         print("GENERATING AGGREGATED GEOJSON")
         print("="*60)
         
-        success_dep = generate_departements_geojson()
-        success_reg = generate_regions_geojson()
-        success_interco = generate_interco_geojson()
-        success_aom = generate_aom_geojson()
+        success_dep = all([generate_departements_geojson(f"communes_{tolerance_label}.geojson.gz", tolerance_label) for tolerance_label in SIMPLIFICATION_LEVELS_TITLES])
+        success_reg = all([generate_regions_geojson(f"communes_{tolerance_label}.geojson.gz", tolerance_label) for tolerance_label in SIMPLIFICATION_LEVELS_TITLES])
+        success_interco = all([generate_interco_geojson(f"communes_{tolerance_label}.geojson.gz", tolerance_label) for tolerance_label in SIMPLIFICATION_LEVELS_TITLES])
+        success_aom = all([generate_aom_geojson(f"communes_{tolerance_label}.geojson.gz", tolerance_label) for tolerance_label in SIMPLIFICATION_LEVELS_TITLES])
         
         # Final summary
         print("\n" + "="*60)
         print("FINAL SUMMARY")
         print("="*60)
         
-        if not args.aggregate_only:
-            print("\n📄 Shapefiles converted to GeoJSON:")
-            for output_name in SHAPEFILES_TO_CONVERT.values():
-                output_path = os.path.join(DATA_DIR, output_name)
-                if os.path.exists(output_path):
-                    print(f"  ✓ {output_name}")
-        
         print("\n📦 Aggregated GeoJSON generated:")
         if success_dep:
-            print(f"  ✓ departements.geojson")
+            for tolerance_label in SIMPLIFICATION_LEVELS_TITLES:
+                print(f"  ✓ departements_{tolerance_label}.geojson.gz")
         if success_reg:
-            print(f"  ✓ regions.geojson")
+            for tolerance_label in SIMPLIFICATION_LEVELS_TITLES:
+                print(f"  ✓ regions_{tolerance_label}.geojson.gz")
         if success_interco:
-            print(f"  ✓ intercommunalites.geojson")
-            print(f"  ✓ intercommunalites_*.geojson (by nature juridique)")
+            for tolerance_label in SIMPLIFICATION_LEVELS_TITLES:
+                print(f"  ✓ intercommunalites_{tolerance_label}.geojson.gz")
+            print(f"  ✓ intercommunalites_*.geojson.gz (by nature juridique) for levels {', '.join(SIMPLIFICATION_LEVELS_TITLES)}")
         if success_aom:
-            print(f"  ✓ aom.geojson")
+            for tolerance_label in SIMPLIFICATION_LEVELS_TITLES:
+                print(f"  ✓ aom_{tolerance_label}.geojson.gz")
 
         print("\n🎉 All done!")
         sys.exit(0)
