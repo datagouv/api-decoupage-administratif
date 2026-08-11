@@ -1,4 +1,4 @@
-#!/usr/bin/env python33
+#!/usr/bin/env python3
 """
 Télécharge et prépare les données de découpage administratif et assimilées.
 
