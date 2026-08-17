@@ -13,7 +13,7 @@ Le script `1_download_decoupage_administratif_data.py` télécharge notamment **
 1. **COG (Code Officiel Géographique)** - INSEE
    - Codes INSEE, noms, types, etc.
 
-2. **Banatic - Correspondance INSEE/SIREN**  
+2. **Banatic - Correspondance INSEE/SIREN**
    - Mapping Code INSEE → SIREN de la commune
 
 3. **Banatic - Composition des EPCI**
@@ -78,7 +78,7 @@ CREATE TABLE communes_metadata (
 
 ### Vue `communes`
 ```sql
-SELECT 
+SELECT
   m.siren as siren,
   m.siren_epci as siren_epci,
   m.nom_epci as nom_epci,
@@ -133,19 +133,19 @@ python3 1_download_decoupage_administratif_data.py
 # ============================================================
 # DOWNLOADING AND ENRICHING COG DATA
 # ============================================================
-# 
+#
 # 📥 Downloading COG data from data.gouv.fr...
 # ✓ Total rows loaded: 36,658
-# 
+#
 # 📥 Downloading Banatic SIREN data...
 # ✓ 34,966 unique SIREN mappings (INSEE → SIREN)
-# 
+#
 # 📥 Downloading Banatic EPCI data...
 # ✓ 34,500 unique EPCI mappings (SIREN commune → SIREN EPCI)
-# 
+#
 # 🔗 Step 1/2: Merging COG data with SIREN numbers...
 # ✓ 34,966 / 36,658 entities have SIREN
-# 
+#
 # 🔗 Step 2/2: Merging with EPCI data...
 # ✓ 33,800 / 36,658 entities have EPCI
 
@@ -169,7 +169,7 @@ python3 5_load_into_spatialite.py
 
 ```bash
 sqlite3 data/apigeo.db "
-SELECT 
+SELECT
   type_commune,
   COUNT(*) as total,
   SUM(CASE WHEN siren_epci IS NOT NULL THEN 1 ELSE 0 END) as avec_epci,
@@ -200,7 +200,7 @@ ORDER BY nom
 
 ```bash
 sqlite3 data/apigeo.db "
-SELECT 
+SELECT
   nom_epci,
   siren_epci,
   COUNT(*) as nb_communes
@@ -289,5 +289,3 @@ GET /groupement_collectivites_territoriales/{code}/communes?fields=competences
 ```
 
 Le paramètre `fields=competences` renvoie les compétences exercées par le groupement pour chaque commune (table `interco_commune`). Les libellés lisibles sont dans `competences_mapping.json`.
-
-

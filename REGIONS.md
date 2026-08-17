@@ -6,7 +6,7 @@ Les données des **régions françaises** sont maintenant intégrées dans l'API
 
 ## 📊 Source des données
 
-**Métadonnées** : [Code Officiel Géographique (COG)](https://www.data.gouv.fr/datasets/code-officiel-geographique-cog/) - Insee  
+**Métadonnées** : [Code Officiel Géographique (COG)](https://www.data.gouv.fr/datasets/code-officiel-geographique-cog/) - Insee
 **Fichier** : https://www.data.gouv.fr/api/1/datasets/r/2486b351-5d85-4e1a-8d12-5df082c75104
 
 **Géométries** : Calculées en fusionnant les géométries des départements (`ST_Union`)
@@ -32,7 +32,7 @@ Géométries calculées :
 Jointure des deux tables :
 ```sql
 CREATE VIEW regions AS
-SELECT 
+SELECT
     m.reg as code_region,
     m.libelle as nom,
     m.nccenr as nom_enrichi,
@@ -175,14 +175,14 @@ sqlite3 data/apigeo.db "SELECT COUNT(*) FROM regions"
 
 # Régions avec géométries
 sqlite3 data/apigeo.db "
-SELECT COUNT(*) 
-FROM regions 
+SELECT COUNT(*)
+FROM regions
 WHERE geometry IS NOT NULL
 "
 
 # Départements par région
 sqlite3 data/apigeo.db "
-SELECT 
+SELECT
   r.nom as region,
   COUNT(d.dep) as nb_departements
 FROM regions_metadata r
@@ -230,7 +230,7 @@ Utiliser le paramètre API `fields=surface` (calcul Shapely) ou un outil SIG. Le
 ### 6. Nombre de communes par région
 
 ```sql
-SELECT 
+SELECT
   r.nom as region,
   COUNT(c.code_insee) as nb_communes
 FROM regions r
@@ -275,13 +275,13 @@ Si certaines régions n'ont pas de géométrie :
 
 ```sql
 -- Vérifier les départements sans code région
-SELECT COUNT(*) 
-FROM departements_metadata 
+SELECT COUNT(*)
+FROM departements_metadata
 WHERE reg IS NULL
 
 -- Vérifier le matching
-SELECT DISTINCT reg 
-FROM departements_metadata 
+SELECT DISTINCT reg
+FROM departements_metadata
 ORDER BY reg
 ```
 
@@ -352,5 +352,3 @@ L'API expose maintenant **3 niveaux géographiques** avec leurs géométries :
 | `/regions` | 18 | Fusion des départements |
 
 🎉 **API Géo France complète !**
-
-

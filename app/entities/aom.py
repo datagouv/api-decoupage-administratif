@@ -25,7 +25,13 @@ from app.nom_search import (
 from app.normalize_string import normalize_string
 
 AOM_MINIMAL_PROPERTIES = ["nom", "siren"]
-AOM_DEFAULT_PROPERTIES = ("nom", "code", "nbCommunes", "codesDepartements", "codesRegions")
+AOM_DEFAULT_PROPERTIES = (
+    "nom",
+    "code",
+    "nbCommunes",
+    "codesDepartements",
+    "codesRegions",
+)
 
 AOM_API_TO_SQL = {
     "code": "siren",
@@ -62,9 +68,13 @@ def resolve_aom_field_lists(fields: Optional[str]):
         sql_col = AOM_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if any(
-        field in requested_fields for field in ("contour", "centre", "bbox", "surface")
-    ) and "geometry_geojson" not in list_properties:
+    if (
+        any(
+            field in requested_fields
+            for field in ("contour", "centre", "bbox", "surface")
+        )
+        and "geometry_geojson" not in list_properties
+    ):
         list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
@@ -132,8 +142,7 @@ def load_aom_for_commune(
 
 def _needs_admin_codes(fields: Optional[str], requested_fields: List[str]) -> bool:
     return (not fields) or any(
-        field in requested_fields
-        for field in ("codesDepartements", "codesRegions")
+        field in requested_fields for field in ("codesDepartements", "codesRegions")
     )
 
 
@@ -426,6 +435,8 @@ AOM_LIST_PARAMS = {
         None,
         description="Champs à inclure (centre, contour, bbox, surface, nbCommunes, codesDepartements, codesRegions)",
     ),
-    "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
+    "limit": Query(
+        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+    ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

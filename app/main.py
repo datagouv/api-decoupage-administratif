@@ -3,34 +3,38 @@ API Géo 2 - FastAPI main application
 API pour accéder aux données des communes françaises
 """
 
-from fastapi import FastAPI, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from dataclasses import dataclass
-from typing import Callable, List, Literal, Optional, Union
 import json
-from shapely.geometry import shape, Point
+from typing import Any, List, Literal, Optional, Union
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pyproj import Geod
+from shapely.geometry import Point, shape
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-_GEOD = Geod(ellps="WGS84")
-
-from app.database import get_db, engine
-from app.nom_search import (
-    NOM_SEARCH_CANDIDATE_LIMIT,
-    nom_match_score,
-    nom_search_sql_clause,
+from app.database import get_db
+from app.entities.aom import (
+    AOM_LIST_PARAMS,
+    get_aom_commune_codes,
+    get_aom_entity_by_code,
+    list_aom_entities,
+    load_aom_for_commune,
 )
-from app.normalize_string import normalize_string
+from app.entities.communes import (
+    ASSOCIEE_PARENT_ENRICH_FIELDS,
+    ASSOCIEE_PARENT_NESTED_FIELDS,
+    COMMUNES_ASSOCIEES_CONFIG,
+    COMMUNES_CONFIG,
+    CommunesEndpointConfig,
+)
+from app.entities.communes import (
+    list_commune_entities as list_communes_for_entity,
+)
 from app.entities.departements import (
     departement_exists,
     get_departement_entity_by_code,
     list_departement_entities,
-)
-from app.entities.regions import (
-    get_region_entity_by_code,
-    list_region_entities,
-    region_exists,
 )
 from app.entities.epcis import (
     EPCI_LIST_PARAMS,
@@ -44,32 +48,35 @@ from app.entities.intercommunalites import (
     get_intercommunalite_entity_by_code,
     list_intercommunalite_entities,
 )
-from app.entities.communes import (
-    COMMUNES_CONFIG,
-    list_commune_entities as list_communes_for_entity,
+from app.entities.regions import (
+    get_region_entity_by_code,
+    list_region_entities,
+    region_exists,
 )
-from app.entities.aom import (
-    AOM_LIST_PARAMS,
-    get_aom_commune_codes,
-    get_aom_entity_by_code,
-    list_aom_entities,
-    load_aom_for_commune,
+from app.nom_search import (
+    NOM_SEARCH_CANDIDATE_LIMIT,
+    nom_match_score,
+    nom_search_sql_clause,
 )
+from app.normalize_string import normalize_string
 from app.schemas import (
     AomGeoJSONResponse,
     AomResponseSchema,
-    CommuneResponseSchema,
     CommuneGeoJSONResponse,
+    CommuneResponseSchema,
     DepartementGeoJSONResponse,
     DepartementResponseSchema,
     EpciGeoJSONResponse,
     EpciResponseSchema,
+    ErrorResponse,
     IntercommunaliteGeoJSONResponse,
     IntercommunaliteResponseSchema,
-    ErrorResponse,
     RegionGeoJSONResponse,
     RegionResponseSchema,
 )
+
+_GEOD = Geod(ellps="WGS84")
+
 
 # Helper function to parse geometry
 def parse_geometry(geom_str):
@@ -230,7 +237,9 @@ def locate_commune_at_point(
         if nom_recherche is not None:
             fallback_query += " AND nom_recherche LIKE :nom_recherche"
         if code_postal:
-            fallback_query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
+            fallback_query += (
+                " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
+            )
         if code_departement:
             fallback_query += commune_code_departement_sql(
                 params, code_departement, enrich_from_parent=use_parent
@@ -251,11 +260,15 @@ def locate_commune_at_point(
     if nearest is None:
         raise HTTPException(status_code=404, detail=config.not_found_point)
 
-    dep_names = load_departement_names(db) if "departement" in requested_fields else None
+    dep_names = (
+        load_departement_names(db) if "departement" in requested_fields else None
+    )
     reg_names = load_region_names(db) if "region" in requested_fields else None
     interco_by_siren = None
     if "intercommunalites" in requested_fields:
-        siren_idx = list_properties.index("siren") if "siren" in list_properties else None
+        siren_idx = (
+            list_properties.index("siren") if "siren" in list_properties else None
+        )
         siren = nearest[siren_idx] if siren_idx is not None else None
         if siren:
             interco_by_siren, _ = load_interco_batch(db, [siren])
@@ -279,6 +292,7 @@ app = FastAPI(
     description="API pour accéder aux structures administratives territoriales françaises",
     version="1.0.0",
 )
+
 
 @app.get("/", tags=["Root"])
 async def root():
@@ -310,9 +324,10 @@ async def root():
             "communes_associees_deleguees": "/communes_associees_deleguees",
             "communes_par_region": "/communes?region={reg}",
             "recherche": "/communes?nom={nom}",
-            "health": "/health"
-        }
+            "health": "/health",
+        },
     }
+
 
 @app.get("/health", tags=["Health"])
 async def health_check(db: Session = Depends(get_db)):
@@ -320,19 +335,17 @@ async def health_check(db: Session = Depends(get_db)):
     try:
         # Test database connection
         db.execute(text("SELECT 1"))
-        return {
-            "status": "healthy",
-            "database": "connected"
-        }
+        return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return JSONResponse(
             status_code=503,
             content={
                 "status": "unhealthy",
                 "database": "disconnected",
-                "error": str(e)
-            }
+                "error": str(e),
+            },
         )
+
 
 dict_apigeo = {
     "code": "code_insee",
@@ -382,21 +395,6 @@ COMMUNE_ASSOCIEE_FORBIDDEN_FIELDS = frozenset(
 COMMUNE_AOM_FIELD = "aom"
 
 
-@dataclass(frozen=True)
-class CommunesEndpointConfig:
-    """Configuration partagée pour /communes et /communes_associees_deleguees."""
-
-    label: str
-    default_properties: tuple[str, ...]
-    forbidden_fields: frozenset[str]
-    type_filter_sql: Callable[[dict], str]
-    not_found_code: str
-    not_found_point: str
-    not_found_search: str
-    enrich_from_parent: bool = False
-    map_type_label: bool = False
-
-
 def commune_type_com_sql(params: dict) -> str:
     """Filtre : communes de type COM uniquement."""
     params["type_commune"] = COMMUNE_TYPE_COM
@@ -406,52 +404,6 @@ def commune_type_com_sql(params: dict) -> str:
 def commune_type_coma_comd_sql(params: dict) -> str:
     """Filtre : communes associées (COMA) et déléguées (COMD)."""
     return " AND type_commune IN ('COMA', 'COMD')"
-
-
-COMMUNES_CONFIG = CommunesEndpointConfig(
-    label="commune",
-    default_properties=(
-        "nom",
-        "code_insee",
-        "code_departement",
-        "siren",
-        "siren_interco",
-        "code_region",
-        "codes_postaux",
-        "population",
-    ),
-    forbidden_fields=frozenset(),
-    type_filter_sql=commune_type_com_sql,
-    not_found_code="Commune avec le code {code} non trouvée",
-    not_found_point="Aucune commune trouvée pour ces coordonnées",
-    not_found_search="Aucune commune trouvée pour ces critères",
-)
-
-COMMUNES_ASSOCIEES_CONFIG = CommunesEndpointConfig(
-    label="commune associée ou déléguée",
-    default_properties=(
-        "nom",
-        "code_insee",
-        "code_departement",
-        "siren_interco",
-        "code_region",
-        "commune_parente",
-        "type_commune",
-    ),
-    forbidden_fields=COMMUNE_ASSOCIEE_FORBIDDEN_FIELDS,
-    type_filter_sql=commune_type_coma_comd_sql,
-    not_found_code="Commune associée ou déléguée avec le code {code} non trouvée",
-    not_found_point="Aucune commune associée ou déléguée trouvée pour ces coordonnées",
-    not_found_search="Aucune commune associée ou déléguée trouvée pour ces critères",
-    enrich_from_parent=True,
-    map_type_label=True,
-)
-
-
-ASSOCIEE_PARENT_ENRICH_FIELDS = frozenset(
-    {"codeDepartement", "codeRegion", "codeEpci"}
-)
-ASSOCIEE_PARENT_NESTED_FIELDS = frozenset({"departement", "region", "epci"})
 
 
 def needs_associee_parent_enrich(
@@ -591,8 +543,7 @@ def resolve_commune_field_lists(
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "Le champ 'aom' n'est disponible que sur "
-                            "/communes/{code}."
+                            "Le champ 'aom' n'est disponible que sur /communes/{code}."
                         ),
                     )
                 continue
@@ -707,10 +658,19 @@ def load_region_names(db) -> dict:
     return {row[0]: row[1] for row in rows}
 
 
-def load_interco_batch(db, commune_sirens: List[str]):
+def load_interco_batch(
+    db, commune_sirens: List[str]
+) -> tuple[
+    dict[str, list[dict[str, Any]]],
+    dict[str, dict[str, list[str]]],
+]:
     """Load interco associations and competences for many communes."""
-    interco_by_siren = {s: [] for s in commune_sirens if s}
-    competences_by_siren = {s: {} for s in commune_sirens if s}
+    interco_by_siren: dict[str, list[dict[str, Any]]] = {
+        s: [] for s in commune_sirens if s
+    }
+    competences_by_siren: dict[str, dict[str, list[str]]] = {
+        s: {} for s in commune_sirens if s
+    }
     sirens = [s for s in commune_sirens if s]
     if not sirens:
         return interco_by_siren, competences_by_siren
@@ -725,13 +685,15 @@ def load_interco_batch(db, commune_sirens: List[str]):
         ORDER BY commune_siren, interco_nature, interco_nom
     """)
     for row in db.execute(assoc_query, params).fetchall():
-        interco_by_siren.setdefault(row[0], []).append({
-            "siren": row[1],
-            "nom": row[2],
-            "nature": row[3],
-            "categorie": row[4],
-            "competences": [],
-        })
+        interco_by_siren.setdefault(row[0], []).append(
+            {
+                "siren": row[1],
+                "nom": row[2],
+                "nature": row[3],
+                "categorie": row[4],
+                "competences": [],
+            }
+        )
 
     try:
         comp_query = text(f"""
@@ -741,7 +703,9 @@ def load_interco_batch(db, commune_sirens: List[str]):
             ORDER BY commune_siren, interco_siren, competence
         """)
         for row in db.execute(comp_query, params).fetchall():
-            competences_by_siren.setdefault(row[0], {}).setdefault(row[1], []).append(row[2])
+            competences_by_siren.setdefault(row[0], {}).setdefault(row[1], []).append(
+                row[2]
+            )
     except Exception:
         pass
 
@@ -804,7 +768,9 @@ def build_commune_properties(
                 dep_nom = dep_names.get(dep_code)
             else:
                 dep_row = db.execute(
-                    text("SELECT libelle FROM departements_metadata WHERE dep = :dep LIMIT 1"),
+                    text(
+                        "SELECT libelle FROM departements_metadata WHERE dep = :dep LIMIT 1"
+                    ),
                     {"dep": dep_code},
                 ).fetchone()
                 dep_nom = dep_row[0] if dep_row else None
@@ -817,7 +783,9 @@ def build_commune_properties(
                 reg_nom = reg_names.get(reg_code)
             else:
                 reg_row = db.execute(
-                    text("SELECT libelle FROM regions_metadata WHERE reg = :reg LIMIT 1"),
+                    text(
+                        "SELECT libelle FROM regions_metadata WHERE reg = :reg LIMIT 1"
+                    ),
                     {"reg": reg_code},
                 ).fetchone()
                 reg_nom = reg_row[0] if reg_row else None
@@ -839,7 +807,10 @@ def build_commune_properties(
             properties[COMMUNE_AOM_FIELD] = aom
 
     if fields:
-        if "departement" in requested_fields and "codeDepartement" not in requested_fields:
+        if (
+            "departement" in requested_fields
+            and "codeDepartement" not in requested_fields
+        ):
             properties.pop("codeDepartement", None)
         if "region" in requested_fields and "codeRegion" not in requested_fields:
             properties.pop("codeRegion", None)
@@ -868,18 +839,22 @@ def build_commune_properties(
                 minx, miny, maxx, maxy = geom_shape.bounds
                 properties["bbox"] = {
                     "type": "Polygon",
-                    "coordinates": [[
-                        [minx, miny],
-                        [maxx, miny],
-                        [maxx, maxy],
-                        [minx, maxy],
-                        [minx, miny],
-                    ]],
+                    "coordinates": [
+                        [
+                            [minx, miny],
+                            [maxx, miny],
+                            [maxx, maxy],
+                            [minx, maxy],
+                            [minx, miny],
+                        ]
+                    ],
                 }
             if "mairie" in requested_fields:
                 mairie = None
                 if "mairie_geojson" in list_properties:
-                    mairie = parse_geometry(result[list_properties.index("mairie_geojson")])
+                    mairie = parse_geometry(
+                        result[list_properties.index("mairie_geojson")]
+                    )
                 properties["mairie"] = mairie or centre_point
             if "surface" in requested_fields:
                 properties["surface"] = compute_surface_hectares(geom_shape)
@@ -900,7 +875,7 @@ def build_commune_properties(
                     """),
                     {"siren": commune_siren},
                 ).fetchall()
-                competences_map = {}
+                competences_map: dict[str, list[str]] = {}
                 try:
                     for comp_row in db.execute(
                         text("""
@@ -915,13 +890,15 @@ def build_commune_properties(
                 except Exception:
                     pass
                 for assoc in assoc_results:
-                    intercommunalites.append({
-                        "siren": assoc[0],
-                        "nom": assoc[1],
-                        "nature": assoc[2],
-                        "categorie": assoc[3],
-                        "competences": competences_map.get(assoc[0], []),
-                    })
+                    intercommunalites.append(
+                        {
+                            "siren": assoc[0],
+                            "nom": assoc[1],
+                            "nature": assoc[2],
+                            "categorie": assoc[3],
+                            "competences": competences_map.get(assoc[0], []),
+                        }
+                    )
         properties["intercommunalites"] = intercommunalites
 
     if config.map_type_label and "type_commune" in list_properties:
@@ -1057,8 +1034,8 @@ def list_commune_entities(
         query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
         params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
 
-    if zone and all([z.strip() in ('metro', 'drom', 'com') for z in zone.split(',')]):
-        zones = [f"'{z.strip()}'" for z in zone.split(',')]
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
+        zones = [f"'{z.strip()}'" for z in zone.split(",")]
         # query += f" AND zone IN (:zone)"
         query += f" AND zone IN ({','.join(zones)})"
         # params['zone'] = f"{','.join(zones)}"
@@ -1086,11 +1063,15 @@ def list_commune_entities(
 
     results = db.execute(text(query), params).fetchall()
 
-    dep_names = load_departement_names(db) if "departement" in requested_fields else None
+    dep_names = (
+        load_departement_names(db) if "departement" in requested_fields else None
+    )
     reg_names = load_region_names(db) if "region" in requested_fields else None
     interco_by_siren = None
     if "intercommunalites" in requested_fields:
-        siren_idx = list_properties.index("siren") if "siren" in list_properties else None
+        siren_idx = (
+            list_properties.index("siren") if "siren" in list_properties else None
+        )
         sirens = []
         if siren_idx is not None:
             sirens = [row[siren_idx] for row in results if row[siren_idx]]
@@ -1102,9 +1083,7 @@ def list_commune_entities(
         else None
     )
     pop_idx = (
-        list_properties.index("population")
-        if "population" in list_properties
-        else None
+        list_properties.index("population") if "population" in list_properties else None
     )
 
     scored_rows: list[tuple[float, tuple]] = []
@@ -1123,7 +1102,9 @@ def list_commune_entities(
         scored_rows.append((match_score, row))
 
     if nom_recherche is not None:
-        scored_rows.sort(key=lambda item: (-item[0], item[1][list_properties.index("nom")]))
+        scored_rows.sort(
+            key=lambda item: (-item[0], item[1][list_properties.index("nom")])
+        )
         if limit is not None:
             scored_rows = scored_rows[offset : offset + limit]
         elif offset:
@@ -1143,7 +1124,9 @@ def list_commune_entities(
             config=config,
         )
         if nom_recherche is not None:
-            props["_score"] = match_score  # sérialisé via alias _score (schéma Pydantic)
+            props["_score"] = (
+                match_score  # sérialisé via alias _score (schéma Pydantic)
+            )
         communes.append(props)
 
     return communes
@@ -1168,16 +1151,18 @@ _COMMUNE_LIST_PARAMS = {
         description="Alias de codeDepartement (déprécié)",
         deprecated=True,
     ),
-    "zone": Query(
-        None, description="Filtrer par zone e.g metro, drom, com"
-    ),
+    "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
     "region": Query(None, description="Filtrer par code région"),
-    "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
+    "fields": Query(
+        None, description="Liste des champs à inclure, séparés par des virgules"
+    ),
     "boost": Query(
         None,
         description="Avec nom : boost=population pour favoriser les communes les plus peuplées (api-geo)",
     ),
-    "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
+    "limit": Query(
+        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+    ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }
 
@@ -1350,11 +1335,16 @@ async def list_communes_associees_deleguees(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
+
 _DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "region": Query(None, description="Filtrer par code région"),
-    "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
-    "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
+    "fields": Query(
+        None, description="Liste des champs à inclure, séparés par des virgules"
+    ),
+    "limit": Query(
+        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+    ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }
 
@@ -1476,9 +1466,12 @@ async def get_departement_by_code(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
+
 _REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
-    "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
+    "fields": Query(
+        None, description="Liste des champs à inclure, séparés par des virgules"
+    ),
     "limit": Query(100, ge=1, le=1000, description="Nombre maximum de résultats"),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }
@@ -1637,6 +1630,7 @@ async def get_region_by_code(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
+
 
 @app.get(
     "/epcis",
@@ -1845,7 +1839,9 @@ async def list_groupement_communes(
 
 @app.get(
     "/groupement_collectivites_territoriales/{code}",
-    response_model=Union[IntercommunaliteResponseSchema, IntercommunaliteGeoJSONResponse],
+    response_model=Union[
+        IntercommunaliteResponseSchema, IntercommunaliteGeoJSONResponse
+    ],
     response_model_exclude_none=True,
     responses={
         404: {"model": ErrorResponse, "description": "Intercommunalité non trouvée"},
@@ -2001,7 +1997,7 @@ async def get_statistics(db: Session = Depends(get_db)):
     """
     try:
         stats_query = text("""
-            SELECT 
+            SELECT
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT code_departement) as total_departements,
                 COUNT(DISTINCT code_region) as total_regions,
@@ -2010,9 +2006,9 @@ async def get_statistics(db: Session = Depends(get_db)):
                 SUM(superficie) as superficie_totale
             FROM communes
         """)
-        
+
         result = db.execute(stats_query).fetchone()
-        
+
         # Count by type
         type_query = text("""
             SELECT type_commune, COUNT(*) as count
@@ -2021,11 +2017,9 @@ async def get_statistics(db: Session = Depends(get_db)):
             ORDER BY count DESC
         """)
         type_results = db.execute(type_query).fetchall()
-        
-        types_breakdown = {
-            row[0]: row[1] for row in type_results
-        }
-        
+
+        types_breakdown = {row[0]: row[1] for row in type_results}
+
         return {
             "total_entities": result[0],
             "total_departements": result[1],
@@ -2038,14 +2032,15 @@ async def get_statistics(db: Session = Depends(get_db)):
                 "COM": "Communes",
                 "ARM": "Arrondissements municipaux",
                 "COMD": "Communes déléguées",
-                "COMA": "Communes associées"
-            }
+                "COMA": "Communes associées",
+            },
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

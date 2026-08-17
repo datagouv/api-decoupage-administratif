@@ -95,7 +95,9 @@ def apply_geometry_response_fields(
     requested_fields: Sequence[str],
 ) -> None:
     """Renseigne contour, centre, bbox et surface à partir d'une géométrie stockée."""
-    if not geom_raw or not any(field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS):
+    if not geom_raw or not any(
+        field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS
+    ):
         return
     geometry = parse_geometry(geom_raw)
     if not geometry:
