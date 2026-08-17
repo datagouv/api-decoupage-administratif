@@ -993,6 +993,7 @@ def list_commune_entities(
     config: CommunesEndpointConfig,
     *,
     nom: Optional[str] = None,
+    code: Optional[str] = None,
     lat: Optional[float] = None,
     lon: Optional[float] = None,
     code_postal: Optional[str] = None,
@@ -1049,6 +1050,10 @@ def list_commune_entities(
     """
     params: dict = {}
     query += config.type_filter_sql(params)
+
+    if code is not None:
+        query += " AND code_insee = :code_insee"
+        params["code_insee"] = code
 
     if nom_recherche is not None:
         query += nom_search_sql_clause(params, nom_recherche)
@@ -1151,6 +1156,7 @@ def list_commune_entities(
 
 _COMMUNE_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "code": Query(None, description="Recherche par code"),
     "lat": Query(
         None,
         description="Latitude (WGS84) : avec lon, renvoie la commune la plus proche (objet unique)",
@@ -1227,6 +1233,7 @@ async def get_commune_by_code(
 )
 async def list_communes(
     nom: Optional[str] = _COMMUNE_LIST_PARAMS["nom"],
+    code: Optional[str] = _COMMUNE_LIST_PARAMS["code"],
     lat: Optional[float] = _COMMUNE_LIST_PARAMS["lat"],
     lon: Optional[float] = _COMMUNE_LIST_PARAMS["lon"],
     codePostal: Optional[str] = _COMMUNE_LIST_PARAMS["codePostal"],
@@ -1251,6 +1258,7 @@ async def list_communes(
             db,
             COMMUNES_CONFIG,
             nom=nom,
+            code=code,
             lat=lat,
             lon=lon,
             code_postal=codePostal,
@@ -1311,6 +1319,7 @@ async def get_commune_associee_deleguee_by_code(
 )
 async def list_communes_associees_deleguees(
     nom: Optional[str] = _COMMUNE_LIST_PARAMS["nom"],
+    code: Optional[str] = _COMMUNE_LIST_PARAMS["code"],
     lat: Optional[float] = _COMMUNE_LIST_PARAMS["lat"],
     lon: Optional[float] = _COMMUNE_LIST_PARAMS["lon"],
     codePostal: Optional[str] = _COMMUNE_LIST_PARAMS["codePostal"],
@@ -1335,6 +1344,7 @@ async def list_communes_associees_deleguees(
             db,
             COMMUNES_ASSOCIEES_CONFIG,
             nom=nom,
+            code=code,
             lat=lat,
             lon=lon,
             code_postal=codePostal,
@@ -1352,6 +1362,7 @@ async def list_communes_associees_deleguees(
 
 _DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "code": Query(None, description="Recherche par code département"),
     "region": Query(None, description="Filtrer par code région"),
     "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
     "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
@@ -1367,6 +1378,7 @@ _DEPARTEMENT_LIST_PARAMS = {
 )
 async def list_departements(
     nom: Optional[str] = _DEPARTEMENT_LIST_PARAMS["nom"],
+    code: Optional[str] = _DEPARTEMENT_LIST_PARAMS["code"],
     region: Optional[str] = _DEPARTEMENT_LIST_PARAMS["region"],
     fields: Optional[str] = _DEPARTEMENT_LIST_PARAMS["fields"],
     limit: Optional[int] = _DEPARTEMENT_LIST_PARAMS["limit"],
@@ -1383,6 +1395,7 @@ async def list_departements(
         return list_departement_entities(
             db,
             nom=nom,
+            code=code,
             region=region,
             fields=fields,
             limit=limit,
@@ -1478,6 +1491,7 @@ async def get_departement_by_code(
 
 _REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "code": Query(None, description="Recherche par code région"),
     "fields": Query(None, description="Liste des champs à inclure, séparés par des virgules"),
     "limit": Query(100, ge=1, le=1000, description="Nombre maximum de résultats"),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
@@ -1492,6 +1506,7 @@ _REGION_LIST_PARAMS = {
 )
 async def list_regions(
     nom: Optional[str] = _REGION_LIST_PARAMS["nom"],
+    code: Optional[str] = _REGION_LIST_PARAMS["code"],
     fields: Optional[str] = _REGION_LIST_PARAMS["fields"],
     limit: int = _REGION_LIST_PARAMS["limit"],
     offset: int = _REGION_LIST_PARAMS["offset"],
@@ -1507,6 +1522,7 @@ async def list_regions(
         return list_region_entities(
             db,
             nom=nom,
+            code=code,
             fields=fields,
             limit=limit,
             offset=offset,
@@ -1646,6 +1662,7 @@ async def get_region_by_code(
 )
 async def list_epcis(
     nom: Optional[str] = EPCI_LIST_PARAMS["nom"],
+    code: Optional[str] = EPCI_LIST_PARAMS["code"],
     fields: Optional[str] = EPCI_LIST_PARAMS["fields"],
     limit: Optional[int] = EPCI_LIST_PARAMS["limit"],
     offset: int = EPCI_LIST_PARAMS["offset"],
@@ -1661,6 +1678,7 @@ async def list_epcis(
         return list_epci_entities(
             db,
             nom=nom,
+            code=code,
             fields=fields,
             limit=limit,
             offset=offset,

@@ -113,6 +113,7 @@ def list_region_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
+    code: Optional[str] = None,
     fields: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
@@ -135,6 +136,10 @@ def list_region_entities(
 
     if nom_query is not None and has_nom_recherche:
         query += nom_search_sql_clause(params, nom_query)
+
+    if code is not None:
+        query += " AND code_region = :code_region"
+        params["code_region"] = code
 
     if nom_query is not None:
         if has_nom_recherche:

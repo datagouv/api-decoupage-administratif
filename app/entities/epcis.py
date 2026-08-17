@@ -53,6 +53,7 @@ def list_epci_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
+    code: Optional[str] = None,
     fields: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -60,6 +61,7 @@ def list_epci_entities(
     return list_interco_entities(
         db,
         nom=nom,
+        code=code,
         natures=EPCI_NATURES,
         fields=fields,
         limit=limit,
@@ -91,6 +93,7 @@ def get_epci_entity_by_code(
 
 EPCI_LIST_PARAMS = {
     "nom": INTERCOMMUNALITE_LIST_PARAMS["nom"],
+    "code": INTERCOMMUNALITE_LIST_PARAMS["code"],
     "fields": INTERCOMMUNALITE_LIST_PARAMS["fields"],
     "limit": INTERCOMMUNALITE_LIST_PARAMS["limit"],
     "offset": INTERCOMMUNALITE_LIST_PARAMS["offset"],

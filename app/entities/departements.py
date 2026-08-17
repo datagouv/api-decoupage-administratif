@@ -115,6 +115,7 @@ def list_departement_entities(
     *,
     nom: Optional[str] = None,
     region: Optional[str] = None,
+    code: Optional[str] = None,
     fields: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -141,6 +142,10 @@ def list_departement_entities(
     if region:
         query += " AND code_region = :region"
         params["region"] = region
+
+    if code is not None:
+        query += " AND code_departement = :code_departement"
+        params["code_departement"] = code
 
     if nom_query is not None:
         if has_nom_recherche:
