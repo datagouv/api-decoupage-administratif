@@ -137,9 +137,13 @@ def resolve_interco_field_lists(
         sql_col = INTERCO_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if any(
-        field in requested_fields for field in ("contour", "centre", "bbox", "surface")
-    ) and "geometry_geojson" not in list_properties:
+    if (
+        any(
+            field in requested_fields
+            for field in ("contour", "centre", "bbox", "surface")
+        )
+        and "geometry_geojson" not in list_properties
+    ):
         list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
@@ -191,11 +195,8 @@ def build_interco_properties(
     if commune_codes is None and communes_code_idx is not None:
         commune_codes = parse_communes_code(row[communes_code_idx])
 
-    include_admin_codes = (
-        default_admin_codes and not fields
-    ) or any(
-        field in requested_fields
-        for field in ("codesDepartements", "codesRegions")
+    include_admin_codes = (default_admin_codes and not fields) or any(
+        field in requested_fields for field in ("codesDepartements", "codesRegions")
     )
     if include_admin_codes and commune_codes is not None:
         if admin_map is None:
@@ -277,8 +278,7 @@ def _needs_admin_codes(
     default_admin_codes: bool,
 ) -> bool:
     return (default_admin_codes and not fields) or any(
-        field in requested_fields
-        for field in ("codesDepartements", "codesRegions")
+        field in requested_fields for field in ("codesDepartements", "codesRegions")
     )
 
 
@@ -320,9 +320,8 @@ def list_interco_entities(
 
     params: dict = {}
     list_properties_sql = ", ".join(query_columns)
-    query = (
-        f"SELECT {list_properties_sql} FROM interco WHERE 1=1"
-        + interco_filter_sql(params, natures=natures, type_filter=type_filter)
+    query = f"SELECT {list_properties_sql} FROM interco WHERE 1=1" + interco_filter_sql(
+        params, natures=natures, type_filter=type_filter
     )
 
     if nom_query is not None and has_nom_recherche:
@@ -548,6 +547,8 @@ INTERCOMMUNALITE_LIST_PARAMS = {
         None,
         description="Champs à inclure (centre, contour, bbox, surface, population, type, financement, membres_siren, codesDepartements, codesRegions)",
     ),
-    "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
+    "limit": Query(
+        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+    ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

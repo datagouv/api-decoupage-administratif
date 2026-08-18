@@ -12,7 +12,7 @@ Le script `1_download_decoupage_administratif_data.py` télécharge **deux sourc
 
 1. **COG (Code Officiel Géographique)** - INSEE
    - Codes INSEE, noms, types, etc.
-   
+
 2. **Banatic - Correspondance INSEE/SIREN**
    - Mapping Code INSEE → SIREN
 
@@ -58,7 +58,7 @@ CREATE TABLE communes_metadata (
 ### Vue `communes`
 La vue joignant métadonnées et géométries inclut maintenant :
 ```sql
-SELECT 
+SELECT
   m.siren as siren,
   ...
 FROM communes_metadata m
@@ -139,8 +139,8 @@ sqlite3 data/apigeo.db "SELECT COUNT(*) FROM communes WHERE siren IS NOT NULL"
 
 # Compter par type
 sqlite3 data/apigeo.db "
-SELECT 
-  type_commune, 
+SELECT
+  type_commune,
   COUNT(*) as total,
   SUM(CASE WHEN siren IS NOT NULL THEN 1 ELSE 0 END) as avec_siren
 FROM communes
@@ -171,5 +171,3 @@ Si plusieurs SIREN existent pour un même code INSEE (cas rare), on garde le pre
 - Téléchargement Banatic : ~2-5 secondes
 - Jointure pandas : ~500ms pour 36 000 lignes
 - Pas d'impact sur les performances de l'API
-
-

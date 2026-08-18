@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from fastapi import HTTPException, Query
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -14,10 +14,12 @@ from app.entities.intercommunalites import (
     EPCI_DEFAULT_PROPERTIES,
     INTERCOMMUNALITE_LIST_PARAMS,
     get_interco_entity_by_code,
-    interco_exists as _interco_exists,
     interco_filter_sql,
     list_interco_entities,
     parse_communes_code,
+)
+from app.entities.intercommunalites import (
+    interco_exists as _interco_exists,
 )
 
 EPCI_NATURES = ("CA", "CU", "CC", "MET69", "METRO")

@@ -6,7 +6,7 @@ Les données des **départements français** sont maintenant intégrées dans l'
 
 ## 📊 Source des données
 
-**Métadonnées** : [Code Officiel Géographique (COG)](https://www.data.gouv.fr/datasets/code-officiel-geographique-cog/) - Insee  
+**Métadonnées** : [Code Officiel Géographique (COG)](https://www.data.gouv.fr/datasets/code-officiel-geographique-cog/) - Insee
 **Fichier** : https://www.data.gouv.fr/api/1/datasets/r/54a8263d-6e2d-48d5-b214-aa17cc13f7a0
 
 **Géométries** : Calculées en fusionnant les géométries des communes (`ST_Union`)
@@ -33,7 +33,7 @@ Géométries calculées :
 Jointure des deux tables :
 ```sql
 CREATE VIEW departements AS
-SELECT 
+SELECT
     m.dep as code_departement,
     m.libelle as nom,
     m.nccenr as nom_enrichi,
@@ -160,14 +160,14 @@ sqlite3 data/apigeo.db "SELECT COUNT(*) FROM departements"
 
 # Départements avec géométries
 sqlite3 data/apigeo.db "
-SELECT COUNT(*) 
-FROM departements 
+SELECT COUNT(*)
+FROM departements
 WHERE geometry IS NOT NULL
 "
 
 # Départements par région
 sqlite3 data/apigeo.db "
-SELECT 
+SELECT
   code_region,
   COUNT(*) as nb_departements
 FROM departements
@@ -201,7 +201,7 @@ with open("paris_dept.geojson", "w") as f:
 ### 3. Calculer la superficie d'un département
 
 ```sql
-SELECT 
+SELECT
   code_departement,
   nom,
   ST_Area(geometry, 1) / 1000000 as superficie_km2
@@ -227,13 +227,13 @@ Si certains départements n'ont pas de géométrie :
 
 ```sql
 -- Vérifier les communes sans code département
-SELECT COUNT(*) 
-FROM communes_geometries 
+SELECT COUNT(*)
+FROM communes_geometries
 WHERE insee_dep IS NULL
 
 -- Vérifier le matching
-SELECT DISTINCT insee_dep 
-FROM communes_geometries 
+SELECT DISTINCT insee_dep
+FROM communes_geometries
 ORDER BY insee_dep
 ```
 
@@ -261,5 +261,3 @@ curl http://localhost:8000/departements
 curl http://localhost:8000/departements/75
 curl "http://localhost:8000/departements/75/communes?limit=5"
 ```
-
-

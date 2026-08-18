@@ -41,4 +41,3 @@ echo ""
 echo "✅ All tests completed!"
 echo ""
 echo "Full documentation: ${API_URL}/docs"
-

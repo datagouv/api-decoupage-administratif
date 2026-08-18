@@ -15,7 +15,6 @@ from app.entities.geometry import (
     apply_geometry_response_fields,
     parse_geometry,
 )
-
 from app.nom_search import (
     NOM_SEARCH_CANDIDATE_LIMIT,
     nom_match_score,
@@ -68,9 +67,10 @@ def resolve_region_field_lists(fields: Optional[str]):
         sql_col = REGION_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if any(
-        field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS
-    ) and "geometry_geojson" not in list_properties:
+    if (
+        any(field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS)
+        and "geometry_geojson" not in list_properties
+    ):
         list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
@@ -197,9 +197,7 @@ def get_region_entity_by_code(
 
     list_properties_sql = ", ".join(query_columns)
     result = db.execute(
-        text(
-            f"SELECT {list_properties_sql} FROM regions WHERE code_region = :code"
-        ),
+        text(f"SELECT {list_properties_sql} FROM regions WHERE code_region = :code"),
         {"code": code},
     ).fetchone()
 
@@ -212,9 +210,7 @@ def get_region_entity_by_code(
     row_by_column = {col: result[i] for i, col in enumerate(query_columns)}
     row = tuple(row_by_column[col] for col in list_properties)
     geom_raw = row_by_column.get("geometry_geojson")
-    properties = build_region_properties(
-        row, list_properties, requested_fields, fields
-    )
+    properties = build_region_properties(row, list_properties, requested_fields, fields)
 
     if format == "geojson":
         geometry = parse_geometry(geom_raw) if geom_raw else None

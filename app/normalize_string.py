@@ -14,7 +14,6 @@ def normalize_string(nom: str) -> str:
     s = re.sub(r"^[dl]'", "", s)
     s = s.replace("-", " ")
     s = "".join(
-        c for c in unicodedata.normalize("NFD", s)
-        if unicodedata.category(c) != "Mn"
+        c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn"
     )
     return re.sub(r"[^a-z]", "", s)

@@ -15,7 +15,6 @@ from app.entities.geometry import (
     apply_geometry_response_fields,
     parse_geometry,
 )
-
 from app.nom_search import (
     NOM_SEARCH_CANDIDATE_LIMIT,
     nom_match_score,
@@ -69,9 +68,10 @@ def resolve_departement_field_lists(fields: Optional[str]):
         sql_col = DEPARTEMENT_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if any(
-        field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS
-    ) and "geometry_geojson" not in list_properties:
+    if (
+        any(field in requested_fields for field in GEOMETRY_RESPONSE_FIELDS)
+        and "geometry_geojson" not in list_properties
+    ):
         list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
@@ -250,6 +250,8 @@ DEPARTEMENT_LIST_PARAMS = {
         None,
         description="Champs à inclure (centre, contour, bbox, surface, codeRegion, …)",
     ),
-    "limit": Query(None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"),
+    "limit": Query(
+        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+    ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

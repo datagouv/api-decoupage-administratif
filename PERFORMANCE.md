@@ -55,18 +55,18 @@ rows = result.fetchall()
 for row in rows:
     dep = row[0]
     geom_text = row[1]
-    
+
     if geom_text:
         # Convert WKT to Shapely geometry
         geom = shapely_wkt.loads(geom_text)
         # Convert to GeoJSON
         geojson = mapping(geom)
         geojson_str = json.dumps(geojson)
-        
+
         # Store pre-computed GeoJSON
         conn.execute(text("""
-            UPDATE departements_geometries 
-            SET geometry_geojson = :geojson 
+            UPDATE departements_geometries
+            SET geometry_geojson = :geojson
             WHERE dep = :dep
         """), {'dep': dep, 'geojson': geojson_str})
 ```
@@ -78,7 +78,7 @@ Les vues utilisent maintenant directement le GeoJSON pré-calculé :
 **Avant** (lent) :
 ```sql
 CREATE VIEW departements AS
-SELECT 
+SELECT
     m.dep as code_departement,
     m.libelle as nom,
     AsGeoJSON(g.geometry) as geometry_geojson,  -- ❌ Calcul à chaque requête
@@ -90,7 +90,7 @@ LEFT JOIN departements_geometries g ON m.dep = g.dep
 **Après** (rapide) :
 ```sql
 CREATE VIEW departements AS
-SELECT 
+SELECT
     m.dep as code_departement,
     m.libelle as nom,
     g.geometry_geojson as geometry_geojson,  -- ✅ Lecture directe
@@ -239,7 +239,7 @@ async def get_region(code: str, response: Response):
     # Cache pendant 1 heure
     response.headers["Cache-Control"] = "public, max-age=3600"
     response.headers["ETag"] = f'"{code}"'
-    
+
     # ... retourner les données
 ```
 
@@ -248,10 +248,10 @@ async def get_region(code: str, response: Response):
 Pour les grandes bases, indexer la colonne :
 
 ```sql
-CREATE INDEX idx_departements_geojson 
+CREATE INDEX idx_departements_geojson
 ON departements_geometries(geometry_geojson);
 
-CREATE INDEX idx_regions_geojson 
+CREATE INDEX idx_regions_geojson
 ON regions_geometries(geometry_geojson);
 ```
 
@@ -287,8 +287,8 @@ time_total:       %{time_total}s\n
 .timer on
 
 -- Tester une requête
-SELECT geometry_geojson 
-FROM departements 
+SELECT geometry_geojson
+FROM departements
 WHERE code_departement = '75';
 ```
 
@@ -330,5 +330,3 @@ python3 5_load_into_spatialite.py
 ## 🎉 Résultat
 
 Avec cette optimisation, l'API peut maintenant servir les géométries de régions et départements **10 à 30 fois plus rapidement** sans calcul à la volée !
-
-
