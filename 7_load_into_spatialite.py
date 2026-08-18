@@ -1371,6 +1371,16 @@ def create_indexes(engine):
         """)
         )
 
+        print(
+            "  Creating index on communes_metadata.typecom and communes_metadata.libelle..."
+        )
+        conn.execute(
+            text("""
+            CREATE INDEX IF NOT EXISTS idx_communes_metadata_typecom_libelle
+            ON communes_metadata(typecom, libelle)
+        """)
+        )
+
         # Index on unified code (geometry table)
         print("  Creating index on communes_geometries.code...")
         conn.execute(
@@ -1383,6 +1393,12 @@ def create_indexes(engine):
             text("""
             CREATE INDEX IF NOT EXISTS idx_communes_geometries_bbox
             ON communes_geometries(min_lon, max_lon, min_lat, max_lat)
+        """)
+        )
+        conn.execute(
+            text("""
+            CREATE INDEX IF NOT EXISTS idx_communes_geometries_code_insee_nature
+            ON communes_geometries(code_insee, nature)
         """)
         )
 
