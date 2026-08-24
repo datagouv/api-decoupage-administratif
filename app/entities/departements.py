@@ -114,6 +114,7 @@ def list_departement_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
+    zone: Optional[str] = None,
     region: Optional[str] = None,
     fields: Optional[str] = None,
     limit: Optional[int] = None,
@@ -134,6 +135,10 @@ def list_departement_entities(
     list_properties_sql = ", ".join(list_properties)
     query = f"SELECT {list_properties_sql} FROM departements WHERE 1=1"
     params: dict = {}
+
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
+        zones = [f"'{z.strip()}'" for z in zone.split(",")]
+        query += f" AND zone IN ({','.join(zones)})"
 
     if nom_query is not None and has_nom_recherche:
         query += nom_search_sql_clause(params, nom_query)
