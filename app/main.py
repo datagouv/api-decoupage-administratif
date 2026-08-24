@@ -1338,6 +1338,7 @@ async def list_communes_associees_deleguees(
 
 _DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "zone": Query(None, description="Filtrage par zone (metro, drom, com)"),
     "region": Query(None, description="Filtrer par code région"),
     "fields": Query(
         None, description="Liste des champs à inclure, séparés par des virgules"
@@ -1357,6 +1358,7 @@ _DEPARTEMENT_LIST_PARAMS = {
 )
 async def list_departements(
     nom: Optional[str] = _DEPARTEMENT_LIST_PARAMS["nom"],
+    zone: Optional[str] = _DEPARTEMENT_LIST_PARAMS["zone"],
     region: Optional[str] = _DEPARTEMENT_LIST_PARAMS["region"],
     fields: Optional[str] = _DEPARTEMENT_LIST_PARAMS["fields"],
     limit: Optional[int] = _DEPARTEMENT_LIST_PARAMS["limit"],
@@ -1373,6 +1375,7 @@ async def list_departements(
         return list_departement_entities(
             db,
             nom=nom,
+            zone=zone,
             region=region,
             fields=fields,
             limit=limit,
@@ -1469,6 +1472,7 @@ async def get_departement_by_code(
 
 _REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
     "fields": Query(
         None, description="Liste des champs à inclure, séparés par des virgules"
     ),
@@ -1485,6 +1489,7 @@ _REGION_LIST_PARAMS = {
 )
 async def list_regions(
     nom: Optional[str] = _REGION_LIST_PARAMS["nom"],
+    zone: Optional[str] = _REGION_LIST_PARAMS["zone"],
     fields: Optional[str] = _REGION_LIST_PARAMS["fields"],
     limit: int = _REGION_LIST_PARAMS["limit"],
     offset: int = _REGION_LIST_PARAMS["offset"],
@@ -1500,6 +1505,7 @@ async def list_regions(
         return list_region_entities(
             db,
             nom=nom,
+            zone=zone,
             fields=fields,
             limit=limit,
             offset=offset,

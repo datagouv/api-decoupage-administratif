@@ -60,6 +60,67 @@ AOM_GEOJSON_FALLBACK = os.path.join(DATA_DIR, "aom.geojson.gz")
 SIREN_INSEE_MAPPING_CSV = os.path.join(DATA_DIR, "siren_insee_mapping.csv")
 MAIRIES_GEOJSON = os.path.join(DATA_DIR, "mairies.geojson.gz")
 
+chef_lieu_com = {
+    "975": "97502",
+    "977": "97701",
+    "978": "97801",
+    "984": "97502",
+    "986": "98613",
+    "987": "98735",
+    "988": "98818",
+    "989": "98901",
+}
+
+
+def generate_departements_and_regions_com(path):
+    # Lecture du CSV
+    rows = pd.read_csv(path, dtype=str)
+
+    # Un enregistrement par code_collectivite
+    departements = rows.drop_duplicates(subset=["code_collectivite"]).assign(
+        code=lambda df: df["code_collectivite"],
+        region=lambda df: df["code_collectivite"],
+        chefLieu=lambda df: df["code_collectivite"].map(chef_lieu_com),
+        nom=lambda df: df["nom_collectivite"],
+        typeLiaison=0,
+        zone="com",
+    )[
+        [
+            "code",
+            "region",
+            "chefLieu",
+            "nom",
+            "typeLiaison",
+            "zone",
+        ]
+    ]
+
+    departements = departements.rename(
+        columns={
+            "code": "dep",
+            "region": "reg",
+            "chefLieu": "cheflieu",
+            "typeLiaison": "tncc",
+            "nom": "libelle",
+        }
+    )
+    departements["nccenr"] = departements["libelle"]
+    departements["ncc"] = (
+        departements["libelle"]
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("utf-8")
+        .str.upper()
+    )
+
+    # Copie des départements puis suppression de la colonne "region"
+    regions = departements.copy().drop(columns=["dep"])
+
+    return departements, regions
+
+
+departements_com, regions_com = generate_departements_and_regions_com(COMMUNES_COM_CSV)
+
 
 def load_communes_mairies(engine):
     """Load mairie points by commune code from mairies.geojson.gz"""
@@ -205,6 +266,9 @@ def load_commune_data(engine):
     # Load communes (COM)
     if os.path.exists(COMMUNES_CSV):
         df_com = pd.read_csv(COMMUNES_CSV, encoding="utf-8", dtype=str)
+        df_com["zone"] = df_com.DEP.apply(
+            lambda x: "drom" if x.startswith("97") else "metro"
+        )
         print(f"✓ Loaded {len(df_com)} communes (TYPECOM='COM')")
         dataframes.append(df_com)
     else:
@@ -230,6 +294,7 @@ def load_commune_data(engine):
         df_communes_com["codes_postaux"] = df_communes_com["codes_postaux"].str.replace(
             "|", ","
         )
+        df_communes_com["zone"] = "com"
         print(f"✓ Loaded {len(df_communes_com)} communes (TYPECOM='COM') for Outre-Mer")
         dataframes.append(df_communes_com)
     else:
@@ -238,6 +303,7 @@ def load_commune_data(engine):
     # Load arrondissements (ARM)
     if os.path.exists(ARRONDISSEMENTS_CSV):
         df_arm = pd.read_csv(ARRONDISSEMENTS_CSV, encoding="utf-8", dtype=str)
+        df_arm["zone"] = "metro"
         print(f"✓ Loaded {len(df_arm)} arrondissements (TYPECOM='ARM')")
         dataframes.append(df_arm)
     else:
@@ -246,6 +312,7 @@ def load_commune_data(engine):
     # Load communes déléguées/associées (COMD/COMA)
     if os.path.exists(COMMUNES_DELEGUEES_CSV):
         df_comda = pd.read_csv(COMMUNES_DELEGUEES_CSV, encoding="utf-8", dtype=str)
+        df_comda["zone"] = "metro"
         print(
             f"✓ Loaded {len(df_comda)} communes déléguées/associées (TYPECOM='COMD'/'COMA')"
         )
@@ -351,20 +418,8 @@ def load_commune_geometries(engine):
 
     # Create unified 'code' column based on entity type
     print("  Creating unified 'code' column...")
-
-    def get_code(row):
-        return row["code_insee"]
-        # # For arrondissements (ARM), use code_insee
-        # if pd.notna(row.get('code_insee')):
-        #     return row['code_insee']
-        # # For communes déléguées/associées (COMD/COMA), use insee_cad
-        # elif pd.notna(row.get('code_insee')):
-        #     return row['code_insee']
-        # # For communes (COM), use insee_com
-        # else:
-        #     return row.get('code_insee')
-
-    gdf["code"] = gdf.apply(get_code, axis=1)
+    gdf["code"] = gdf["code_insee"]
+    gdf = gdf.drop(columns=["zone"])
     print("  ✓ Unified 'code' column created")
     print(f"    Sample codes: {gdf['code'].head(3).tolist()}")
     print(f"    Codes with values: {gdf['code'].notna().sum()} / {len(gdf)}")
@@ -520,8 +575,13 @@ def load_departements(engine):
         return None
 
     print(f"  Loading departements metadata from {DEPARTEMENTS_CSV}...")
-    df_dept = pd.read_csv(DEPARTEMENTS_CSV, encoding="utf-8", dtype=str)
-    print(f"✓ Loaded {len(df_dept)} departements")
+    df_dept_admin_express = pd.read_csv(DEPARTEMENTS_CSV, encoding="utf-8", dtype=str)
+    df_dept_admin_express["zone"] = df_dept_admin_express.dep.apply(
+        lambda x: "drom" if x.startswith("97") else "metro"
+    )
+    print(f"✓ Loaded {len(df_dept_admin_express)} departements")
+
+    df_dept = pd.concat([df_dept_admin_express, departements_com], ignore_index=True)
 
     print("  Building nom_recherche (normalized names for API search)...")
     df_dept["nom_recherche"] = df_dept["libelle"].apply(
@@ -560,8 +620,13 @@ def load_regions(engine):
         return None
 
     print(f"  Loading regions metadata from {REGIONS_CSV}...")
-    df_reg = pd.read_csv(REGIONS_CSV, encoding="utf-8", dtype=str)
-    print(f"✓ Loaded {len(df_reg)} regions")
+    df_reg_admin_express = pd.read_csv(REGIONS_CSV, encoding="utf-8", dtype=str)
+    df_reg_admin_express["zone"] = df_reg_admin_express.cheflieu.apply(
+        lambda x: "drom" if x.startswith("97") else "metro"
+    )
+    print(f"✓ Loaded {len(df_reg_admin_express)} regions")
+
+    df_reg = pd.concat([df_reg_admin_express, regions_com], ignore_index=True)
 
     print("  Building nom_recherche (normalized names for API search)...")
     df_reg["nom_recherche"] = df_reg["libelle"].apply(
@@ -1380,6 +1445,12 @@ def create_indexes(engine):
             ON communes_metadata(typecom, libelle)
         """)
         )
+        conn.execute(
+            text("""
+            CREATE INDEX IF NOT EXISTS idx_communes_metadata_zone
+            ON communes_metadata(zone)
+        """)
+        )
 
         # Index on unified code (geometry table)
         print("  Creating index on communes_geometries.code...")
@@ -1521,6 +1592,7 @@ def create_view(engine):
                 m.siren_interco as siren_interco,
                 m.nom_interco as nom_interco,
                 m.codes_postaux as codes_postaux,
+                m.zone as zone,
                 g.code as code_geo,
                 -- g.insee_com as insee_com_geo,
                 -- g.insee_arm as insee_arm_geo,
@@ -1533,7 +1605,6 @@ def create_view(engine):
                 g.code_insee_du_departement as code_departement_geo,
                 g.code_insee_de_la_region as code_region_geo,
                 g.statut as statut,
-                g.zone as zone,
                 g.population as population,
                 g.min_lon as min_lon,
                 g.min_lat as min_lat,
@@ -1578,6 +1649,7 @@ def create_departements_view(engine):
                 m.tncc as type_nom,
                 m.reg as code_region,
                 m.cheflieu as code_chef_lieu,
+                m.zone as zone,
                 g.dep as dep_geo,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
@@ -1610,6 +1682,7 @@ def create_regions_view(engine):
                 m.ncc as nom_majuscules,
                 m.tncc as type_nom,
                 m.cheflieu as code_chef_lieu,
+                m.zone as zone,
                 g.reg as reg_geo,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
