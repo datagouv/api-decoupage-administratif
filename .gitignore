@@ -30,3 +30,4 @@ sources/
 .DS_Store
 
 .postgis_data/
+results-prod.json.gz
