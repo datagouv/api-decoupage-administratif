@@ -16,6 +16,9 @@ from shapely import wkt as shapely_wkt
 from shapely.geometry import mapping
 from sqlalchemy import create_engine, text
 
+sys.path.append(".")
+from anciens_codes import compute_anciens_codes_communes
+
 from app.normalize_string import normalize_string
 
 # Database configuration
@@ -257,6 +260,29 @@ def drop_existing_views(engine):
         print(f"⚠️  Warning while dropping views: {e}")
 
 
+def load_anciens_codes(engine):
+    """Load commune metadata from CSV (including communes, arrondissements, and communes déléguées/associées)"""
+    print(
+        "\nLoading anciens codes communes from COG CSV communes file and associated mouvement file CSV..."
+    )
+
+    match_current_anciens_codes = []
+    for k_code, v_anciens_codes in compute_anciens_codes_communes().items():
+        for v_ancien_code in v_anciens_codes:
+            match_current_anciens_codes.append([v_ancien_code, k_code])
+    df_match_current_anciens_codes = pd.DataFrame(
+        match_current_anciens_codes, columns=["ancien_code", "code"]
+    )
+
+    # Load into database
+    table_name = "communes_anciens_codes"
+    df_match_current_anciens_codes.to_sql(
+        table_name, engine, if_exists="replace", index=False
+    )
+    print(f"\n✓ All data loaded into table '{table_name}'")
+    return load_anciens_codes
+
+
 def load_commune_data(engine):
     """Load commune metadata from CSV (including communes, arrondissements, and communes déléguées/associées)"""
     print("\nLoading commune metadata from multiple CSV files...")
@@ -345,6 +371,44 @@ def load_commune_data(engine):
     print(
         f"  ✓ nom_recherche column added ({df['nom_recherche'].ne('').sum()} non-empty values)"
     )
+    match_current_anciens_codes = [
+        [k, ",".join(sorted(v))] for k, v in compute_anciens_codes_communes().items()
+    ]
+    df_match_current_anciens_codes = pd.DataFrame(
+        match_current_anciens_codes, columns=["code", "anciens_codes"]
+    )
+
+    df = df.merge(
+        df_match_current_anciens_codes, right_on="code", left_on="com", how="left"
+    )
+    # Fix as we also completed where communes associees/deleguees instead of only typecom == 'COM'
+    df.loc[
+        df["typecom"] != "COM",
+        "anciens_codes",
+    ] = np.nan
+    df = df[
+        [
+            "typecom",
+            "com",
+            "reg",
+            "dep",
+            "ctcd",
+            "arr",
+            "tncc",
+            "ncc",
+            "nccenr",
+            "libelle",
+            "can",
+            "comparent",
+            "siren",
+            "siren_interco",
+            "nom_interco",
+            "codes_postaux",
+            "zone",
+            "nom_recherche",
+            "anciens_codes",
+        ]
+    ]
 
     # Load into database
     table_name = "communes_metadata"
@@ -1451,7 +1515,12 @@ def create_indexes(engine):
             ON communes_metadata(zone)
         """)
         )
-
+        conn.execute(
+            text("""
+            CREATE INDEX idx_communes_anciens_codes_code
+            ON communes_anciens_codes(ancien_code)
+        """)
+        )
         # Index on unified code (geometry table)
         print("  Creating index on communes_geometries.code...")
         conn.execute(
@@ -1592,6 +1661,7 @@ def create_view(engine):
                 m.siren_interco as siren_interco,
                 m.nom_interco as nom_interco,
                 m.codes_postaux as codes_postaux,
+                m.anciens_codes as anciens_codes,
                 m.zone as zone,
                 g.code as code_geo,
                 -- g.insee_com as insee_com_geo,
@@ -1861,6 +1931,9 @@ def main():
     # Load data (communes, arrondissements, and communes déléguées/associées merged into one table)
     load_commune_data(engine)
     load_commune_geometries(engine)
+
+    # Load anciensCodes in specific table
+    load_anciens_codes(engine)
 
     # Load departements and create their geometries from communes
     load_departements(engine)
