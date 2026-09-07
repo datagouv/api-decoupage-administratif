@@ -40,9 +40,12 @@ class CommuneResponseSchema(BaseModel):
     codesPostaux: Optional[List[str]] = Field(
         None, description="Liste des codes postaux de la commune (La Poste)"
     )
-    population: Optional[float] = Field(None, description="Population")
+    population: Optional[int] = Field(None, description="Population")
     surface: Optional[float] = Field(
         None, description="Surface de la commune en hectares"
+    )
+    anciensCodes: Optional[List[str]] = Field(
+        None, description="Liste des anciens codes INSEE de la commune"
     )
     zone: Optional[str] = Field(None, description="Zone : metro, drom ou com")
     contour: Optional[Dict[str, Any]] = Field(
