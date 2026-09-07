@@ -19,7 +19,6 @@ from app.entities.aom import (
     get_aom_commune_codes,
     get_aom_entity_by_code,
     list_aom_entities,
-    load_aom_for_commune,
 )
 from app.entities.communes import (
     ASSOCIEE_PARENT_ENRICH_FIELDS,
@@ -27,9 +26,9 @@ from app.entities.communes import (
     COMMUNES_ASSOCIEES_CONFIG,
     COMMUNES_CONFIG,
     CommunesEndpointConfig,
-)
-from app.entities.communes import (
-    list_commune_entities as list_communes_for_entity,
+    build_commune_properties,
+    list_commune_entities,
+    resolve_commune_field_lists,
 )
 from app.entities.departements import (
     departement_exists,
@@ -53,12 +52,6 @@ from app.entities.regions import (
     list_region_entities,
     region_exists,
 )
-from app.nom_search import (
-    NOM_SEARCH_CANDIDATE_LIMIT,
-    nom_match_score,
-    nom_search_sql_clause,
-)
-from app.normalize_string import normalize_string
 from app.schemas import (
     AomGeoJSONResponse,
     AomResponseSchema,
@@ -347,63 +340,8 @@ async def health_check(db: Session = Depends(get_db)):
         )
 
 
-dict_apigeo = {
-    "code": "code_insee",
-    "nom": "nom",
-    "codeDepartement": "code_departement",
-    "codeRegion": "code_region",
-    "siren": "siren",
-    "codeEpci": "siren_interco",
-    "epci": "nom_interco",
-    "codesPostaux": "codes_postaux",
-    "population": "population",
-    "contour": "geometry_geojson",
-    "centre": "geometry_geojson",
-    "bbox": "geometry_geojson",
-    "mairie": "mairie_geojson",
-    "chefLieu": "commune_parente",
-    "type": "type_commune",
-}
-dict_apigeo_reverse = {
-    "code_insee": "code",
-    "nom": "nom",
-    "code_departement": "codeDepartement",
-    "code_region": "codeRegion",
-    "siren": "siren",
-    "siren_interco": "codeEpci",
-    "nom_interco": "epci",
-    "codes_postaux": "codesPostaux",
-    "population": "population",
-    "geometry_geojson": "contour",
-    "mairie_geojson": "mairie",
-    "commune_parente": "chefLieu",
-}
-
 COMMUNE_MINIMAL_PROPERTIES = ["nom", "code_insee"]
 COMMUNE_TYPE_COM = "COM"
-COMMUNE_TYPES_ASSOCIEE_DELEGUEE = ("COMA", "COMD")
-
-COMMUNE_TYPE_API_LABEL = {
-    "COMD": "commune-deleguee",
-    "COMA": "commune-associee",
-}
-
-COMMUNE_ASSOCIEE_FORBIDDEN_FIELDS = frozenset(
-    {"siren", "population", "codesPostaux", "zone"}
-)
-
-COMMUNE_AOM_FIELD = "aom"
-
-
-def commune_type_com_sql(params: dict) -> str:
-    """Filtre : communes de type COM uniquement."""
-    params["type_commune"] = COMMUNE_TYPE_COM
-    return " AND type_commune = :type_commune"
-
-
-def commune_type_coma_comd_sql(params: dict) -> str:
-    """Filtre : communes associées (COMA) et déléguées (COMD)."""
-    return " AND type_commune IN ('COMA', 'COMD')"
 
 
 def needs_associee_parent_enrich(
@@ -528,81 +466,6 @@ def commune_code_region_sql(
     """
 
 
-def resolve_commune_field_lists(
-    fields: Optional[str],
-    config: CommunesEndpointConfig = COMMUNES_CONFIG,
-    *,
-    allow_aom: bool = False,
-):
-    """Build SQL columns and requested API fields from ?fields=."""
-    if fields:
-        requested_fields = [f.strip() for f in fields.split(",") if f.strip()]
-        for field in requested_fields:
-            if field == COMMUNE_AOM_FIELD:
-                if not allow_aom:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            "Le champ 'aom' n'est disponible que sur /communes/{code}."
-                        ),
-                    )
-                continue
-            if field in config.forbidden_fields:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Le champ '{field}' n'est pas autorisé pour cet endpoint.",
-                )
-        if (
-            "intercommunalites" in requested_fields
-            and "siren" in config.forbidden_fields
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Le champ 'intercommunalites' n'est pas disponible pour cet endpoint.",
-            )
-    else:
-        requested_fields = []
-
-    if not fields:
-        return list(config.default_properties), [], False
-
-    list_properties = COMMUNE_MINIMAL_PROPERTIES.copy()
-    for field in requested_fields:
-        if field in dict_apigeo and dict_apigeo[field] not in list_properties:
-            list_properties.append(dict_apigeo[field])
-    if "departement" in requested_fields and "code_departement" not in list_properties:
-        list_properties.append("code_departement")
-    if "region" in requested_fields and "code_region" not in list_properties:
-        list_properties.append("code_region")
-    if "epci" in requested_fields:
-        if "siren_interco" not in list_properties:
-            list_properties.append("siren_interco")
-        if "nom_interco" not in list_properties:
-            list_properties.append("nom_interco")
-    if (
-        "intercommunalites" in requested_fields
-        and "siren" not in config.forbidden_fields
-        and "siren" not in list_properties
-    ):
-        list_properties.append("siren")
-    if (
-        any(
-            f in requested_fields
-            for f in ("mairie", "surface", "contour", "centre", "bbox")
-        )
-        and "geometry_geojson" not in list_properties
-    ):
-        list_properties.append("geometry_geojson")
-    if "mairie" in requested_fields and "mairie_geojson" not in list_properties:
-        list_properties.append("mairie_geojson")
-    if config.enrich_from_parent and needs_associee_parent_enrich(
-        requested_fields, fields_explicit=True
-    ):
-        if "commune_parente" not in list_properties:
-            list_properties.append("commune_parente")
-    return list_properties, requested_fields, True
-
-
 def commune_centre_geometry(geom_geojson: Optional[str]):
     """Point GeoJSON du centroïde à partir d'une géométrie stockée en base."""
     raw_geom = parse_geometry(geom_geojson)
@@ -717,203 +580,6 @@ def load_interco_batch(
     return interco_by_siren, competences_by_siren
 
 
-def build_commune_properties(
-    result,
-    list_properties: List[str],
-    requested_fields: List[str],
-    db: Session,
-    fields: Optional[str],
-    *,
-    dep_names: Optional[dict] = None,
-    reg_names: Optional[dict] = None,
-    interco_by_siren: Optional[dict] = None,
-    competences_by_siren: Optional[dict] = None,
-    config: CommunesEndpointConfig = COMMUNES_CONFIG,
-):
-    """Build API commune object from a DB row (same rules as GET /communes/{code})."""
-    properties = {}
-    for i, column_name in enumerate(list_properties):
-        if column_name not in dict_apigeo_reverse:
-            continue
-        api_field = dict_apigeo_reverse[column_name]
-        value = result[i]
-        if api_field == "codesPostaux":
-            value = value.split(",") if value else []
-        if api_field == "contour":
-            parsed_geometry = parse_geometry(value)
-            value = parsed_geometry if "contour" in requested_fields else None
-        if api_field == "mairie":
-            value = parse_geometry(value)
-        properties[api_field] = value
-
-    code_insee = properties.get("code")
-
-    parent_code = None
-    if "commune_parente" in list_properties:
-        parent_code = result[list_properties.index("commune_parente")]
-
-    if config.enrich_from_parent:
-        enrich_commune_from_parent(
-            properties,
-            db,
-            parent_code=parent_code,
-            requested_fields=requested_fields,
-            fields_explicit=bool(fields),
-        )
-
-    if "departement" in requested_fields:
-        dep_code = properties.get("codeDepartement")
-        if dep_code:
-            if dep_names is not None:
-                dep_nom = dep_names.get(dep_code)
-            else:
-                dep_row = db.execute(
-                    text(
-                        "SELECT libelle FROM departements_metadata WHERE dep = :dep LIMIT 1"
-                    ),
-                    {"dep": dep_code},
-                ).fetchone()
-                dep_nom = dep_row[0] if dep_row else None
-            properties["departement"] = {"code": dep_code, "nom": dep_nom}
-
-    if "region" in requested_fields:
-        reg_code = properties.get("codeRegion")
-        if reg_code:
-            if reg_names is not None:
-                reg_nom = reg_names.get(reg_code)
-            else:
-                reg_row = db.execute(
-                    text(
-                        "SELECT libelle FROM regions_metadata WHERE reg = :reg LIMIT 1"
-                    ),
-                    {"reg": reg_code},
-                ).fetchone()
-                reg_nom = reg_row[0] if reg_row else None
-            properties["region"] = {"code": reg_code, "nom": reg_nom}
-
-    if "epci" in requested_fields:
-        epci_code = properties.get("codeEpci")
-        epci_nom = properties.get("epci")
-        if epci_code or epci_nom:
-            properties["epci"] = {"code": epci_code, "nom": epci_nom}
-
-    if COMMUNE_AOM_FIELD in requested_fields:
-        aom = load_aom_for_commune(
-            db,
-            code_insee or "",
-            properties.get("siren"),
-        )
-        if aom:
-            properties[COMMUNE_AOM_FIELD] = aom
-
-    if fields:
-        if (
-            "departement" in requested_fields
-            and "codeDepartement" not in requested_fields
-        ):
-            properties.pop("codeDepartement", None)
-        if "region" in requested_fields and "codeRegion" not in requested_fields:
-            properties.pop("codeRegion", None)
-        if "epci" in requested_fields and "codeEpci" not in requested_fields:
-            properties.pop("codeEpci", None)
-
-    if "zone" in requested_fields and code_insee:
-        properties.pop("zone", None)
-
-    if "geometry_geojson" in list_properties and (
-        "centre" in requested_fields
-        or "bbox" in requested_fields
-        or "mairie" in requested_fields
-        or "surface" in requested_fields
-    ):
-        geometry = parse_geometry(result[list_properties.index("geometry_geojson")])
-        if geometry:
-            geom_shape = shape(geometry)
-            centre_point = {
-                "type": "Point",
-                "coordinates": [geom_shape.centroid.x, geom_shape.centroid.y],
-            }
-            if "centre" in requested_fields:
-                properties["centre"] = centre_point
-            if "bbox" in requested_fields:
-                minx, miny, maxx, maxy = geom_shape.bounds
-                properties["bbox"] = {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [minx, miny],
-                            [maxx, miny],
-                            [maxx, maxy],
-                            [minx, maxy],
-                            [minx, miny],
-                        ]
-                    ],
-                }
-            if "mairie" in requested_fields:
-                mairie = None
-                if "mairie_geojson" in list_properties:
-                    mairie = parse_geometry(
-                        result[list_properties.index("mairie_geojson")]
-                    )
-                properties["mairie"] = mairie or centre_point
-            if "surface" in requested_fields:
-                properties["surface"] = compute_surface_hectares(geom_shape)
-
-    if "intercommunalites" in requested_fields:
-        commune_siren = properties.get("siren")
-        intercommunalites = []
-        if commune_siren:
-            if interco_by_siren is not None:
-                intercommunalites = interco_by_siren.get(commune_siren, [])
-            else:
-                assoc_results = db.execute(
-                    text("""
-                        SELECT interco_siren, interco_nom, interco_nature, membre_categorie
-                        FROM commune_interco_associations
-                        WHERE commune_siren = :siren
-                        ORDER BY interco_nature, interco_nom
-                    """),
-                    {"siren": commune_siren},
-                ).fetchall()
-                competences_map: dict[str, list[str]] = {}
-                try:
-                    for comp_row in db.execute(
-                        text("""
-                            SELECT interco_siren, competence
-                            FROM interco_commune
-                            WHERE commune_siren = :siren
-                            ORDER BY interco_siren, competence
-                        """),
-                        {"siren": commune_siren},
-                    ).fetchall():
-                        competences_map.setdefault(comp_row[0], []).append(comp_row[1])
-                except Exception:
-                    pass
-                for assoc in assoc_results:
-                    intercommunalites.append(
-                        {
-                            "siren": assoc[0],
-                            "nom": assoc[1],
-                            "nature": assoc[2],
-                            "categorie": assoc[3],
-                            "competences": competences_map.get(assoc[0], []),
-                        }
-                    )
-        properties["intercommunalites"] = intercommunalites
-
-    if config.map_type_label and "type_commune" in list_properties:
-        if not fields or "type" in requested_fields:
-            raw_type = result[list_properties.index("type_commune")]
-            if raw_type:
-                properties["type"] = COMMUNE_TYPE_API_LABEL.get(raw_type, raw_type)
-
-    if fields:
-        allowed = {"nom", "code"} | set(requested_fields)
-        properties = {k: v for k, v in properties.items() if k in allowed}
-
-    return properties
-
-
 def get_commune_entity_by_code(
     code: str,
     fields: Optional[str],
@@ -963,173 +629,6 @@ def get_commune_entity_by_code(
     return build_commune_properties(
         result, list_properties, requested_fields, db, fields, config=config
     )
-
-
-def list_commune_entities(
-    db: Session,
-    config: CommunesEndpointConfig,
-    *,
-    nom: Optional[str] = None,
-    lat: Optional[float] = None,
-    lon: Optional[float] = None,
-    code_postal: Optional[str] = None,
-    code_departement: Optional[str] = None,
-    region: Optional[str] = None,
-    fields: Optional[str] = None,
-    boost: Optional[str] = None,
-    limit: Optional[int] = None,
-    zone: Optional[str] = None,
-    offset: int = 0,
-):
-    nom_recherche = None
-    if nom is not None:
-        nom_recherche = normalize_string(nom)
-        if not nom_recherche:
-            point_early = resolve_lat_lon_point(lat, lon)
-            if point_early:
-                raise HTTPException(status_code=404, detail=config.not_found_search)
-            return []
-
-    point = resolve_lat_lon_point(lat, lon)
-    if point:
-        lon_f, lat_f = point
-        return locate_commune_at_point(
-            db,
-            lon_f,
-            lat_f,
-            fields,
-            config,
-            nom_recherche=nom_recherche,
-            code_postal=code_postal,
-            code_departement=code_departement,
-            region=region,
-        )
-
-    boost_population = boost == "population"
-    if boost and boost != "population":
-        raise HTTPException(
-            status_code=400,
-            detail="Valeur de boost non supportée. Utilisez boost=population.",
-        )
-
-    list_properties, requested_fields, _ = resolve_commune_field_lists(fields, config)
-    if nom_recherche is not None:
-        for col in ("nom_recherche", "population"):
-            if col not in list_properties:
-                list_properties.append(col)
-    list_properties_sql = ", ".join(list_properties)
-
-    query = f"""
-        SELECT {list_properties_sql}
-        FROM communes
-        WHERE 1=1
-    """
-    params: dict = {}
-    query += config.type_filter_sql(params)
-
-    if nom_recherche is not None:
-        query += nom_search_sql_clause(params, nom_recherche)
-
-    if code_postal:
-        query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
-        params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
-
-    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
-        zones = [f"'{z.strip()}'" for z in zone.split(",")]
-        # query += f" AND zone IN (:zone)"
-        query += f" AND zone IN ({','.join(zones)})"
-        # params['zone'] = f"{','.join(zones)}"
-
-    use_parent = config.enrich_from_parent
-    if code_departement:
-        query += commune_code_departement_sql(
-            params, code_departement, enrich_from_parent=use_parent
-        )
-
-    if region:
-        query += commune_code_region_sql(params, region, enrich_from_parent=use_parent)
-
-    if nom_recherche is not None:
-        query += " LIMIT :candidate_limit"
-        params["candidate_limit"] = NOM_SEARCH_CANDIDATE_LIMIT
-    else:
-        query += " ORDER BY nom"
-        if offset:
-            query += " OFFSET :offset"
-            params["offset"] = offset
-        if limit is not None:
-            query += " LIMIT :limit"
-            params["limit"] = limit
-
-    results = db.execute(text(query), params).fetchall()
-
-    dep_names = (
-        load_departement_names(db) if "departement" in requested_fields else None
-    )
-    reg_names = load_region_names(db) if "region" in requested_fields else None
-    interco_by_siren = None
-    if "intercommunalites" in requested_fields:
-        siren_idx = (
-            list_properties.index("siren") if "siren" in list_properties else None
-        )
-        sirens = []
-        if siren_idx is not None:
-            sirens = [row[siren_idx] for row in results if row[siren_idx]]
-        interco_by_siren, _ = load_interco_batch(db, sirens)
-
-    nom_idx = (
-        list_properties.index("nom_recherche")
-        if "nom_recherche" in list_properties
-        else None
-    )
-    pop_idx = (
-        list_properties.index("population") if "population" in list_properties else None
-    )
-
-    scored_rows: list[tuple[float, tuple]] = []
-    for row in results:
-        match_score = 0.0
-        if nom_recherche is not None and nom_idx is not None:
-            pop = row[pop_idx] if pop_idx is not None else None
-            match_score = nom_match_score(
-                nom_recherche,
-                row[nom_idx] or "",
-                pop,
-                boost_population=boost_population,
-            )
-            if match_score <= 0:
-                continue
-        scored_rows.append((match_score, row))
-
-    if nom_recherche is not None:
-        scored_rows.sort(
-            key=lambda item: (-item[0], item[1][list_properties.index("nom")])
-        )
-        if limit is not None:
-            scored_rows = scored_rows[offset : offset + limit]
-        elif offset:
-            scored_rows = scored_rows[offset:]
-
-    communes = []
-    for match_score, row in scored_rows:
-        props = build_commune_properties(
-            row,
-            list_properties,
-            requested_fields,
-            db,
-            fields,
-            dep_names=dep_names,
-            reg_names=reg_names,
-            interco_by_siren=interco_by_siren,
-            config=config,
-        )
-        if nom_recherche is not None:
-            props["_score"] = (
-                match_score  # sérialisé via alias _score (schéma Pydantic)
-            )
-        communes.append(props)
-
-    return communes
 
 
 _COMMUNE_LIST_PARAMS = {
@@ -1699,7 +1198,7 @@ async def list_epci_communes(
     try:
         commune_codes = get_epci_commune_codes(db, code)
         dep_code = resolve_code_departement_filter(codeDepartement, departement)
-        return list_communes_for_entity(
+        return list_commune_entities(
             db,
             COMMUNES_CONFIG,
             nom=nom,
@@ -1821,7 +1320,7 @@ async def list_groupement_communes(
     try:
         commune_codes = get_groupement_commune_codes(db, code)
         dep_code = resolve_code_departement_filter(codeDepartement, departement)
-        return list_communes_for_entity(
+        return list_commune_entities(
             db,
             COMMUNES_CONFIG,
             nom=nom,
@@ -1940,7 +1439,7 @@ async def list_aom_communes(
     try:
         commune_codes = get_aom_commune_codes(db, code)
         dep_code = resolve_code_departement_filter(codeDepartement, departement)
-        return list_communes_for_entity(
+        return list_commune_entities(
             db,
             COMMUNES_CONFIG,
             nom=nom,

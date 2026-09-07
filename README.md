@@ -28,25 +28,25 @@ source venv/bin/activate
 uv pip install -r requirements.txt
 
 # 2. Télécharger les données administratives (COG, Banatic, AOM, intercos…)
-python3 1_download_decoupage_administratif_data.py
+python3 build_data/1_download_decoupage_administratif_data.py
 
 # 3. Télécharger les géométries IGN et OSM pour les COM (collectivités d'Outre Mer)
-python3 2_download_geometries_ign.py
+python3 build_data/2_download_geometries_ign.py
 
 # 4. Convertir depuis les GPKG en GeoJSON depuis Admin Express (commune, arrondissement_municipal, commune_associee_ou_deleguee, collectivite_territoriale")
-python3 3_convert_admin_express_into_geojson.py
+python3 build_data/3_convert_admin_express_into_geojson.py
 
 # 5. Assemble communes from sources AdminExpress and OSM, generate data for mairies
-python3 4_assemble_communes_and_mairies_from_source.py
+python3 build_data/4_assemble_communes_and_mairies_from_source.py
 
 # 6. Simplifier les GeoJSON des communes, des arrondissements municpaux et des communes déléguées et associées, (5m, 10m, 100m, 1000m)
-python3 5_simplify_geojson.py
+python3 build_data/5_simplify_geojson.py
 
 # 7. Assembler les unités administratives supérieures depuis les données simplifiées des communes (régions, départements, intercommunalités, AOM)
-python3 6_assemble_by_admin_units.py
+python3 build_data/6_assemble_by_admin_units.py
 
 # 6. Charger dans SQLite
-python3 7_load_into_spatialite.py
+python3 build_data/7_load_into_spatialite.py
 
 # 7. Lancer l'API
 uvicorn app.main:app --reload
@@ -58,13 +58,13 @@ L'API est accessible sur **http://localhost:8000**
 
 ```bash
 # Préparer les données (une fois, en local)
-python3 1_download_decoupage_administratif_data.py
-python3 2_download_geometries_ign.py
-python3 3_convert_admin_express_into_geojson.py
-python3 4_assemble_communes_and_mairies_from_source.py
-python3 5_simplify_geojson.py
-python3 6_assemble_by_admin_units.py
-python3 7_load_into_spatialite.py
+python3 build_data/1_download_decoupage_administratif_data.py
+python3 build_data/2_download_geometries_ign.py
+python3 build_data/3_convert_admin_express_into_geojson.py
+python3 build_data/4_assemble_communes_and_mairies_from_source.py
+python3 build_data/5_simplify_geojson.py
+python3 build_data/6_assemble_by_admin_units.py
+python3 build_data/7_load_into_spatialite.py
 
 # Lancer l'API
 docker-compose up
@@ -174,11 +174,11 @@ apigeo2/
 
 ```bash
 # Supprimer la base et recharger
-python3 reset_database.py
-python3 5_load_into_spatialite.py
+python3 build_data/reset_database.py
+python3 build_data/7_load_into_spatialite.py
 
 # Migration bbox seule (base existante)
-python3 5_load_into_spatialite.py --migrate-bbox
+python3 build_data/7_load_into_spatialite.py --migrate-bbox
 ```
 
 ### Accès direct à la base
@@ -205,23 +205,25 @@ Licence Ouverte / Open Licence 2.0.
 
 ```bash
 ls -lh data/apigeo.db
-python3 5_load_into_spatialite.py
+python3 build_data/7_load_into_spatialite.py
 ```
 
 ### Réinitialisation complète
 
 ```bash
-python3 reset_database.py
-python3 1_download_decoupage_administratif_data.py
-python3 2_download_geometries_ign.py
-python3 3_convert_shape_into_geojson.py
-python3 4_simplify_geojson.py
-python3 5_load_into_spatialite.py
+python3 build_data/reset_database.py
+python3 build_data/1_download_decoupage_administratif_data.py
+python3 build_data/2_download_geometries_ign.py
+python3 build_data/3_convert_admin_express_into_geojson.py
+python3 build_data/4_assemble_communes_and_mairies_from_source.py
+python3 build_data/5_simplify_geojson.py
+python3 build_data/6_assemble_by_admin_units.py
+python3 build_data/7_load_into_spatialite.py
 ```
 
 ### Géométries manquantes
 
-Vérifier que les scripts 2, 3 et 4 ont bien produit les fichiers `*_5m.geojson` dans `data/`.
+Vérifier que les scripts 3, 4, 5 et 6 ont bien produit les fichiers `*_5m.geojson` dans `data/`.
 
 ## 📚 Documentation complémentaire
 

@@ -26,23 +26,17 @@ from io import BytesIO, StringIO
 
 import pandas as pd
 import requests
-
-# URLs
-COG_URL = (
-    "https://www.data.gouv.fr/api/1/datasets/r/91a95bee-c7c8-45f9-a8aa-f14cc4697545"
+from download_urls import (
+    AOM_SOURCE_URL,
+    BANATIC_INTERCO_URL,
+    BANATIC_SIREN_URL,
+    COG_URL,
+    DEPARTEMENTS_URL,
+    INTERCO_LIST_URL,
+    INTERCO_MEMBERS_URL,
+    LAPOSTE_URL,
+    REGIONS_URL,
 )
-BANATIC_SIREN_URL = (
-    "https://www.data.gouv.fr/api/1/datasets/r/5d3cfdd0-00de-43fe-a5db-dffeacec6fc7"
-)
-BANATIC_INTERCO_URL = (
-    "https://www.data.gouv.fr/api/1/datasets/r/6e05c448-62cc-4470-aa0f-4f31adea0bc4"
-)
-LAPOSTE_URL = "https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/data-files/019HexaSmal.csv"
-INTERCO_LIST_URL = (
-    "https://www.data.gouv.fr/api/1/datasets/r/25571b3e-a5ce-4567-bfb4-650504644d7b"
-)
-INTERCO_MEMBERS_URL = "https://www.banatic.interieur.gouv.fr/consultation/api/export/pregenere/telecharger/France"
-MAIRIES_GEOJSON_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2026/geojson/mairies.geojson.gz"
 
 # Directories
 DATA_DIR = "data"
@@ -55,11 +49,6 @@ INTERCO_MEMBERS_XLSX = os.path.join(DATA_DIR, "intercos_membres.xlsx")
 INTERCO_MEMBERS_FILE = os.path.join(DATA_DIR, "interco_members.csv")
 
 # AOM files (URL à mettre à jour chaque année lors de la publication RT)
-AOM_SOURCE_URL = (
-    "https://static.data.gouv.fr/resources/"
-    "liste-et-composition-des-autorites-organisatrices-de-la-mobilite-aom/"
-    "20260423-072522/base-rt-2025-v11.ods"
-)
 AOM_SOURCE_FILE = os.path.join(DATA_DIR, "base-rt-aom.ods")
 AOM_FILE = os.path.join(DATA_DIR, "aom.csv")
 AOM_COMMUNE_FILE = os.path.join(DATA_DIR, "aom_commune.csv")
@@ -405,9 +394,6 @@ def download_departements():
     print("DOWNLOADING DEPARTEMENTS DATA FROM COG")
     print("=" * 80)
 
-    DEPARTEMENTS_URL = (
-        "https://www.data.gouv.fr/api/1/datasets/r/54a8263d-6e2d-48d5-b214-aa17cc13f7a0"
-    )
     OUTPUT_FILE = os.path.join(DATA_DIR, "departements.csv")
 
     print("\n📥 Downloading departements from COG...")
@@ -446,9 +432,6 @@ def download_regions():
     print("DOWNLOADING REGIONS DATA FROM COG")
     print("=" * 80)
 
-    REGIONS_URL = (
-        "https://www.data.gouv.fr/api/1/datasets/r/2486b351-5d85-4e1a-8d12-5df082c75104"
-    )
     OUTPUT_FILE = os.path.join(DATA_DIR, "regions.csv")
 
     print("\n📥 Downloading regions from COG...")

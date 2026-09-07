@@ -12,8 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.entities.aom import load_aom_for_commune
 from app.entities.geometry import (
-    commune_zone,
-    compute_surface_hectares,
     geometry_shape_from_column,
     parse_geometry,
     resolve_lat_lon_point,
@@ -190,21 +188,11 @@ dict_apigeo = {
     "mairie": "mairie_geojson",
     "chefLieu": "commune_parente",
     "type": "type_commune",
+    "anciensCodes": "anciens_codes",
+    "surface": "surface",
 }
-dict_apigeo_reverse = {
-    "code_insee": "code",
-    "nom": "nom",
-    "code_departement": "codeDepartement",
-    "code_region": "codeRegion",
-    "siren": "siren",
-    "siren_interco": "codeEpci",
-    "nom_interco": "epci",
-    "codes_postaux": "codesPostaux",
-    "population": "population",
-    "geometry_geojson": "contour",
-    "mairie_geojson": "mairie",
-    "commune_parente": "chefLieu",
-}
+
+dict_apigeo_reverse = {v: k for k, v in dict_apigeo.items()}
 
 COMMUNE_MINIMAL_PROPERTIES = ["nom", "code_insee"]
 COMMUNE_TYPE_COM = "COM"
@@ -663,7 +651,6 @@ def build_commune_properties(
     dep_names: Optional[dict] = None,
     reg_names: Optional[dict] = None,
     interco_by_siren: Optional[dict] = None,
-    competences_by_siren: Optional[dict] = None,
     interco_competences_by_commune: Optional[dict[str, list[str]]] = None,
     config: CommunesEndpointConfig = COMMUNES_CONFIG,
 ):
@@ -674,7 +661,7 @@ def build_commune_properties(
             continue
         api_field = dict_apigeo_reverse[column_name]
         value = result[i]
-        if api_field == "codesPostaux":
+        if api_field in ["codesPostaux", "anciensCodes"]:
             value = value.split(",") if value else []
         if api_field == "contour":
             parsed_geometry = parse_geometry(value)
@@ -755,13 +742,12 @@ def build_commune_properties(
             properties.pop("codeEpci", None)
 
     if "zone" in requested_fields and code_insee:
-        properties["zone"] = commune_zone(code_insee)
+        properties.pop("zone", None)
 
     if "geometry_geojson" in list_properties and (
         "centre" in requested_fields
         or "bbox" in requested_fields
         or "mairie" in requested_fields
-        or "surface" in requested_fields
     ):
         geometry = parse_geometry(result[list_properties.index("geometry_geojson")])
         if geometry:
@@ -793,8 +779,6 @@ def build_commune_properties(
                         result[list_properties.index("mairie_geojson")]
                     )
                 properties["mairie"] = mairie or centre_point
-            if "surface" in requested_fields:
-                properties["surface"] = compute_surface_hectares(geom_shape)
 
     if "intercommunalites" in requested_fields:
         commune_siren = properties.get("siren")
@@ -926,6 +910,7 @@ def list_commune_entities(
     fields: Optional[str] = None,
     boost: Optional[str] = None,
     limit: Optional[int] = None,
+    zone: Optional[str] = None,
     offset: int = 0,
 ):
     nom_recherche = None
@@ -958,7 +943,6 @@ def list_commune_entities(
             status_code=400,
             detail="Valeur de boost non supportée. Utilisez boost=population.",
         )
-
     list_properties, requested_fields, _ = resolve_commune_field_lists(
         fields,
         config,
@@ -984,6 +968,12 @@ def list_commune_entities(
     if code_postal:
         query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
         params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
+
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
+        zones = [f"'{z.strip()}'" for z in zone.split(",")]
+        # query += f" AND zone IN (:zone)"
+        query += f" AND zone IN ({','.join(zones)})"
+        # params['zone'] = f"{','.join(zones)}"
 
     use_parent = config.enrich_from_parent
     if code_departement:

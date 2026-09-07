@@ -10,15 +10,17 @@ from pathlib import Path
 
 import py7zr
 import requests
+from download_urls import (
+    ADMIN_EXPRESS_URL,
+    OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL,
+)
 
 # Configuration des sources
 SOURCES_PATH = Path(__file__).parent / "sources"
 
-ADMIN_EXPRESS_BASE_URL = "https://data.geopf.fr/telechargement/download/ADMIN-EXPRESS/ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19/"
-ADMIN_EXPRESS_FILE = "ADMIN-EXPRESS_4-0__GPKG_WGS84G_FRA_2026-01-19.7z"
 
-OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL = "https://contours-administratifs.s3.rbx.io.cloud.ovh.net/2026/shp/osm-communes-com-without-admin-express.zip"
-"osm-communes-com-without-admin-express.zip"
+ADMIN_EXPRESS_FILE = ADMIN_EXPRESS_URL.split("/")[-1]
+
 OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_FILE = (
     OSM_COMMUNES_COM_COMMUNES_NOT_IN_ADMIN_EXPRESS_URL.split("/")[-1]
 )
@@ -192,9 +194,7 @@ def main() -> int:
         print(f"Using sources directory: {SOURCES_PATH}")
 
         # Télécharger et décompresser ADMIN EXPRESS
-        download_source_file(
-            ADMIN_EXPRESS_BASE_URL + ADMIN_EXPRESS_FILE, ADMIN_EXPRESS_FILE
-        )
+        download_source_file(ADMIN_EXPRESS_URL, ADMIN_EXPRESS_FILE)
         decompress_admin_express_files()
 
         # Télécharger et décompresser OSM communes-com
