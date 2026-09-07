@@ -13,12 +13,16 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely import wkt as shapely_wkt
-from shapely.geometry import mapping
+from shapely.geometry import mapping, shape
 from sqlalchemy import create_engine, text
 
 sys.path.append(".")
 from anciens_codes import compute_anciens_codes_communes
 
+from app.entities.geometry import (
+    compute_surface_hectares,
+    parse_geometry,
+)
 from app.normalize_string import normalize_string
 
 # Database configuration
@@ -512,6 +516,10 @@ def load_commune_geometries(engine):
         )
     )
     gdf["geometry"] = gdf["geometry"].apply(lambda geom: geom.wkt if geom else None)
+
+    gdf["surface"] = gdf["geometry_geojson"].apply(
+        lambda geom: compute_surface_hectares(shape(parse_geometry(geom)))
+    )
 
     print("  Loading geometries to database...")
     gdf.to_sql(table_name, engine, if_exists="replace", index=False)
@@ -1675,6 +1683,7 @@ def create_view(engine):
                 g.code_insee_du_departement as code_departement_geo,
                 g.code_insee_de_la_region as code_region_geo,
                 g.statut as statut,
+                g.surface as surface,
                 g.population as population,
                 g.min_lon as min_lon,
                 g.min_lat as min_lat,
