@@ -115,6 +115,7 @@ def list_departement_entities(
     *,
     nom: Optional[str] = None,
     zone: Optional[str] = None,
+    code: Optional[str] = None,
     region: Optional[str] = None,
     fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
@@ -146,6 +147,10 @@ def list_departement_entities(
     if region:
         query += " AND code_region = :region"
         params["region"] = region
+
+    if code is not None:
+        query += " AND code_departement = :code_departement"
+        params["code_departement"] = code
 
     if nom_query is not None:
         if has_nom_recherche:
@@ -257,6 +262,7 @@ def get_departement_entity_by_code(
 DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "zone": Query(None, description="Filtrage par zone (metro, drom, com)"),
+    "code": Query(None, description="Recherche par code département"),
     "codeRegion": Query(None, description="Filtrer par code région"),
     "fields": Query(
         None,

@@ -287,6 +287,7 @@ def list_interco_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
+    code: Optional[str] = None,
     natures: Optional[Sequence[str]] = None,
     type_filter: Optional[str] = None,
     fields: Optional[list[str]] = None,
@@ -328,6 +329,10 @@ def list_interco_entities(
         natures=natures,
         type_filter=type_filter,
     )
+
+    if code is not None:
+        query += " AND siren = :siren"
+        params["siren"] = code
 
     if nom_query is not None and has_nom_recherche:
         query += nom_search_sql_clause(params, nom_query)
@@ -546,6 +551,7 @@ def get_intercommunalite_entity_by_code(
 
 INTERCOMMUNALITE_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "code": Query(None, description="Recherche par code SIREN"),
     "type": Query(
         None,
         description="Filtrer par nature juridique (CC, CA, CU, METRO, SIVOM, etc.)",
