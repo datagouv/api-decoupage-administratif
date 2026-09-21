@@ -550,6 +550,13 @@ def load_region_names(db) -> dict:
     return {row[0]: row[1] for row in rows}
 
 
+def load_anciens_codes(db) -> dict:
+    rows = db.execute(
+        text("SELECT ancien_code, code FROM communes_anciens_codes")
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
 def load_interco_batch(
     db,
     commune_sirens: List[str],
@@ -1016,6 +1023,13 @@ def list_commune_entities(
         query += f" AND code_insee IN ({placeholders})"
         for i, commune_code in enumerate(commune_codes):
             params[f"cc_{i}"] = commune_code
+
+    if ancien_code is not None:
+        anciens_codes = load_anciens_codes(db)
+        if ancien_code in anciens_codes:
+            code = anciens_codes[ancien_code]
+        else:
+            return []
 
     if code is not None:
         query += " AND code_insee = :code_insee"
