@@ -48,9 +48,9 @@ def departements_nom_recherche_available(db: Session) -> bool:
         return False
 
 
-def resolve_departement_field_lists(fields: Optional[str]):
+def resolve_departement_field_lists(fields: Optional[list[str]]):
     if fields:
-        requested_fields = [f.strip() for f in fields.split(",") if f.strip()]
+        requested_fields = fields
         for field in requested_fields:
             if field not in DEPARTEMENT_API_TO_SQL:
                 raise HTTPException(
@@ -80,7 +80,7 @@ def build_departement_properties(
     row,
     list_properties: List[str],
     requested_fields: List[str],
-    fields: Optional[str],
+    fields: Optional[list[str]],
 ) -> dict:
     properties = {}
     for i, column_name in enumerate(list_properties):
@@ -116,7 +116,7 @@ def list_departement_entities(
     nom: Optional[str] = None,
     zone: Optional[str] = None,
     region: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -196,7 +196,10 @@ def list_departement_entities(
     departements = []
     for match_score, row in scored_rows:
         props = build_departement_properties(
-            row, list_properties, requested_fields, fields
+            row,
+            list_properties,
+            requested_fields,
+            fields,
         )
         if nom_query is not None:
             props["_score"] = match_score
@@ -206,7 +209,7 @@ def list_departement_entities(
 
 def get_departement_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
 ):
@@ -219,7 +222,7 @@ def get_departement_entity_by_code(
     result = db.execute(
         text(
             f"SELECT {list_properties_sql} FROM departements "
-            "WHERE code_departement = :code"
+            "WHERE code_departement = :code",
         ),
         {"code": code},
     ).fetchone()
@@ -234,7 +237,10 @@ def get_departement_entity_by_code(
     row = tuple(row_by_column[col] for col in list_properties)
     geom_raw = row_by_column.get("geometry_geojson")
     properties = build_departement_properties(
-        row, list_properties, requested_fields, fields
+        row,
+        list_properties,
+        requested_fields,
+        fields,
     )
 
     if format == "geojson":
@@ -250,13 +256,17 @@ def get_departement_entity_by_code(
 
 DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
-    "region": Query(None, description="Filtrer par code région"),
+    "zone": Query(None, description="Filtrage par zone (metro, drom, com)"),
+    "codeRegion": Query(None, description="Filtrer par code région"),
     "fields": Query(
         None,
-        description="Champs à inclure (centre, contour, bbox, surface, codeRegion, …)",
+        description="Liste des champs à inclure, séparés par des virgules",
     ),
     "limit": Query(
-        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+        None,
+        ge=1,
+        le=1000,
+        description="Nombre maximum de résultats (optionnel)",
     ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

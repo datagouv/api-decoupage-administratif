@@ -84,7 +84,7 @@ def bbox_geojson_from_shape(geom_shape) -> Optional[dict]:
                 [maxx, maxy],
                 [minx, maxy],
                 [minx, miny],
-            ]
+            ],
         ],
     }
 

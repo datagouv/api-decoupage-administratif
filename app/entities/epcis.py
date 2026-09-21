@@ -39,7 +39,7 @@ def get_epci_commune_codes(db: Session, code: str) -> list[str]:
         text(
             "SELECT communes_code FROM interco WHERE siren = :code"
             + interco_filter_sql(params, natures=EPCI_NATURES)
-            + " LIMIT 1"
+            + " LIMIT 1",
         ),
         params,
     ).fetchone()
@@ -55,7 +55,7 @@ def list_epci_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -74,7 +74,7 @@ def list_epci_entities(
 
 def get_epci_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
 ):

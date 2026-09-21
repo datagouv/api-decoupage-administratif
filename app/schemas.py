@@ -19,7 +19,89 @@ class CommuneResponseSchema(BaseModel):
         description="Pertinence de la recherche par nom (0–1 ; 1 = correspondance exacte du nom normalisé)",
     )
     chefLieu: Optional[str] = Field(
-        None, description="Code INSEE de la commune chef-lieu (COMD/COMA)"
+        None,
+        description="Code INSEE de la commune chef-lieu (COMD/COMA)",
+    )
+    type: Optional[str] = Field(
+        None,
+        description="Type d'entité : commune-deleguee (COMD) ou commune-associee (COMA)",
+    )
+    associees: Optional[List[str]] = Field(
+        None,
+        description="Liste des codes INSEE des communes associées de la commune, si présentes",
+    )
+    deleguees: Optional[List[str]] = Field(
+        None,
+        description="Liste des codes INSEE des communes déléguées de la commune, si présentes",
+    )
+    codeDepartement: Optional[str] = Field(None, description="Code département")
+    departement: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Département {code, nom}",
+    )
+    siren: Optional[str] = Field(None, description="SIREN de la commune")
+    codeEpci: Optional[str] = Field(None, description="Code de l'EPCI parente")
+    epci: Optional[Dict[str, Any]] = Field(None, description="EPCI {code, nom}")
+    aom: Optional[Dict[str, Any]] = Field(
+        None,
+        description="AOM associée à la commune {code, nom}",
+    )
+    codeRegion: Optional[str] = Field(None, description="Code région")
+    region: Optional[Dict[str, Any]] = Field(None, description="Région {code, nom}")
+    codesPostaux: Optional[List[str]] = Field(
+        None,
+        description="Liste des codes postaux de la commune (La Poste)",
+    )
+    population: Optional[int] = Field(None, description="Population")
+    surface: Optional[float] = Field(
+        None,
+        description="Surface de la commune en hectares",
+    )
+    anciensCodes: Optional[List[str]] = Field(
+        None,
+        description="Liste des anciens codes INSEE de la commune",
+    )
+    zone: Optional[str] = Field(None, description="Zone : metro, drom ou com")
+    contour: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Contour GeoJSON de la commune",
+    )
+    centre: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Centre GeoJSON (Point) de la commune",
+    )
+    bbox: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Bounding box GeoJSON (Polygon)",
+    )
+    mairie: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Point GeoJSON proxy de la mairie",
+    )
+    intercommunalites: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Intercommunalités associées à la commune",
+    )
+    competences: Optional[List[str]] = Field(
+        None,
+        description="Compétences exercées par l'EPCI/groupement pour cette commune (interco_commune)",
+    )
+
+
+class CommuneAssocieeDelegueeResponseSchema(BaseModel):
+    """Schema for commune endpoint"""
+
+    nom: str = Field(..., description="Nom de la commune")
+    code: str = Field(..., description="Code INSEE de la commune")
+    score: Optional[float] = Field(
+        None,
+        validation_alias="_score",
+        serialization_alias="_score",
+        description="Pertinence de la recherche par nom (0–1 ; 1 = correspondance exacte du nom normalisé)",
+    )
+    chefLieu: Optional[str] = Field(
+        None,
+        description="Code INSEE de la commune chef-lieu (COMD/COMA)",
     )
     type: Optional[str] = Field(
         None,
@@ -27,45 +109,30 @@ class CommuneResponseSchema(BaseModel):
     )
     codeDepartement: Optional[str] = Field(None, description="Code département")
     departement: Optional[Dict[str, Any]] = Field(
-        None, description="Département {code, nom}"
+        None,
+        description="Département {code, nom}",
     )
-    siren: Optional[str] = Field(None, description="SIREN de la commune")
     codeEpci: Optional[str] = Field(None, description="Code de l'EPCI parente")
     epci: Optional[Dict[str, Any]] = Field(None, description="EPCI {code, nom}")
-    aom: Optional[Dict[str, Any]] = Field(
-        None, description="AOM associée à la commune {code, nom}"
-    )
     codeRegion: Optional[str] = Field(None, description="Code région")
     region: Optional[Dict[str, Any]] = Field(None, description="Région {code, nom}")
-    codesPostaux: Optional[List[str]] = Field(
-        None, description="Liste des codes postaux de la commune (La Poste)"
-    )
     population: Optional[int] = Field(None, description="Population")
     surface: Optional[float] = Field(
-        None, description="Surface de la commune en hectares"
-    )
-    anciensCodes: Optional[List[str]] = Field(
-        None, description="Liste des anciens codes INSEE de la commune"
+        None,
+        description="Surface de la commune en hectares",
     )
     zone: Optional[str] = Field(None, description="Zone : metro, drom ou com")
     contour: Optional[Dict[str, Any]] = Field(
-        None, description="Contour GeoJSON de la commune"
+        None,
+        description="Contour GeoJSON de la commune",
     )
     centre: Optional[Dict[str, Any]] = Field(
-        None, description="Centre GeoJSON (Point) de la commune"
+        None,
+        description="Centre GeoJSON (Point) de la commune",
     )
     bbox: Optional[Dict[str, Any]] = Field(
-        None, description="Bounding box GeoJSON (Polygon)"
-    )
-    mairie: Optional[Dict[str, Any]] = Field(
-        None, description="Point GeoJSON proxy de la mairie"
-    )
-    intercommunalites: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Intercommunalités associées à la commune"
-    )
-    competences: Optional[List[str]] = Field(
         None,
-        description="Compétences exercées par l'EPCI/groupement pour cette commune (interco_commune)",
+        description="Bounding box GeoJSON (Polygon)",
     )
 
 
@@ -75,6 +142,7 @@ class DepartementResponseSchema(BaseModel):
     nom: str = Field(..., description="Nom du département")
     code: str = Field(..., description="Code département (ex: 75, 2A)")
     codeRegion: Optional[str] = Field(None, description="Code région")
+    region: Optional[Dict[str, Any]] = Field(None, description="Région {code, nom}")
     score: Optional[float] = Field(
         None,
         validation_alias="_score",
@@ -82,7 +150,8 @@ class DepartementResponseSchema(BaseModel):
         description="Pertinence de la recherche par nom (0–1 ; 1 = correspondance exacte)",
     )
     codeChefLieu: Optional[str] = Field(
-        None, description="Code INSEE de la commune chef-lieu"
+        None,
+        description="Code INSEE de la commune chef-lieu",
     )
     nomEnrichi: Optional[str] = Field(None, description="Nom enrichi")
     nomMajuscules: Optional[str] = Field(None, description="Nom en majuscules")
@@ -90,7 +159,8 @@ class DepartementResponseSchema(BaseModel):
     contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
     centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
     bbox: Optional[Dict[str, Any]] = Field(
-        None, description="Bounding box GeoJSON (Polygon)"
+        None,
+        description="Bounding box GeoJSON (Polygon)",
     )
 
 
@@ -106,7 +176,8 @@ class RegionResponseSchema(BaseModel):
         description="Pertinence de la recherche par nom (0–1 ; 1 = correspondance exacte)",
     )
     codeChefLieu: Optional[str] = Field(
-        None, description="Code INSEE de la commune chef-lieu"
+        None,
+        description="Code INSEE de la commune chef-lieu",
     )
     nomEnrichi: Optional[str] = Field(None, description="Nom enrichi")
     nomMajuscules: Optional[str] = Field(None, description="Nom en majuscules")
@@ -114,7 +185,8 @@ class RegionResponseSchema(BaseModel):
     contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
     centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
     bbox: Optional[Dict[str, Any]] = Field(
-        None, description="Bounding box GeoJSON (Polygon)"
+        None,
+        description="Bounding box GeoJSON (Polygon)",
     )
 
 
@@ -130,24 +202,29 @@ class EpciResponseSchema(BaseModel):
         description="Pertinence de la recherche par nom (0–1 ; 1 = correspondance exacte)",
     )
     codesDepartements: Optional[List[str]] = Field(
-        None, description="Codes départements des communes membres"
+        None,
+        description="Codes départements des communes membres",
     )
     codesRegions: Optional[List[str]] = Field(
-        None, description="Codes régions des communes membres"
+        None,
+        description="Codes régions des communes membres",
     )
     population: Optional[float] = Field(None, description="Population")
     type: Optional[str] = Field(
-        None, description="Nature juridique (CA, CU, CC, METRO, MET69)"
+        None,
+        description="Nature juridique (CA, CU, CC, METRO, MET69)",
     )
     financement: Optional[str] = Field(None, description="Mode de financement")
     membres_siren: Optional[List[str]] = Field(
-        None, description="SIREN des membres (communes et groupements)"
+        None,
+        description="SIREN des membres (communes et groupements)",
     )
     surface: Optional[float] = Field(None, description="Surface en hectares")
     contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
     centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
     bbox: Optional[Dict[str, Any]] = Field(
-        None, description="Bounding box GeoJSON (Polygon)"
+        None,
+        description="Bounding box GeoJSON (Polygon)",
     )
 
 
@@ -160,10 +237,12 @@ class IntercommunaliteGeoJSONResponse(BaseModel):
 
     type: str = "Feature"
     properties: Dict[str, Any] = Field(
-        ..., description="Propriétés de l'intercommunalité"
+        ...,
+        description="Propriétés de l'intercommunalité",
     )
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 
@@ -173,7 +252,8 @@ class EpciGeoJSONResponse(BaseModel):
     type: str = "Feature"
     properties: Dict[str, Any] = Field(..., description="Propriétés de l'EPCI")
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 
@@ -190,16 +270,19 @@ class AomResponseSchema(BaseModel):
     )
     nbCommunes: Optional[int] = Field(None, description="Nombre de communes membres")
     codesDepartements: Optional[List[str]] = Field(
-        None, description="Codes départements des communes membres"
+        None,
+        description="Codes départements des communes membres",
     )
     codesRegions: Optional[List[str]] = Field(
-        None, description="Codes régions des communes membres"
+        None,
+        description="Codes régions des communes membres",
     )
     surface: Optional[float] = Field(None, description="Surface en hectares")
     contour: Optional[Dict[str, Any]] = Field(None, description="Contour GeoJSON")
     centre: Optional[Dict[str, Any]] = Field(None, description="Centre GeoJSON (Point)")
     bbox: Optional[Dict[str, Any]] = Field(
-        None, description="Bounding box GeoJSON (Polygon)"
+        None,
+        description="Bounding box GeoJSON (Polygon)",
     )
 
 
@@ -209,7 +292,8 @@ class AomGeoJSONResponse(BaseModel):
     type: str = "Feature"
     properties: Dict[str, Any] = Field(..., description="Propriétés de l'AOM")
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 
@@ -219,7 +303,8 @@ class RegionGeoJSONResponse(BaseModel):
     type: str = "Feature"
     properties: Dict[str, Any] = Field(..., description="Propriétés de la région")
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 
@@ -229,7 +314,8 @@ class DepartementGeoJSONResponse(BaseModel):
     type: str = "Feature"
     properties: Dict[str, Any] = Field(..., description="Propriétés du département")
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 
@@ -239,7 +325,22 @@ class CommuneGeoJSONResponse(BaseModel):
     type: str = "Feature"
     properties: Dict[str, Any] = Field(..., description="Propriétés de la commune")
     geometry: Optional[Dict[str, Any]] = Field(
-        None, description="Géométrie au format GeoJSON"
+        None,
+        description="Géométrie au format GeoJSON",
+    )
+
+
+class CommuneAssocieeDelegueeGeoJSONResponse(BaseModel):
+    """Schema for GeoJSON response"""
+
+    type: str = "Feature"
+    properties: Dict[str, Any] = Field(
+        ...,
+        description="Propriétés de la commune associée/déléguée",
+    )
+    geometry: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Géométrie au format GeoJSON",
     )
 
 

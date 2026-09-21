@@ -47,9 +47,9 @@ def regions_nom_recherche_available(db: Session) -> bool:
         return False
 
 
-def resolve_region_field_lists(fields: Optional[str]):
+def resolve_region_field_lists(fields: Optional[list[str]]):
     if fields:
-        requested_fields = [f.strip() for f in fields.split(",") if f.strip()]
+        requested_fields = fields
         for field in requested_fields:
             if field not in REGION_API_TO_SQL:
                 raise HTTPException(
@@ -79,7 +79,7 @@ def build_region_properties(
     row,
     list_properties: List[str],
     requested_fields: List[str],
-    fields: Optional[str],
+    fields: Optional[list[str]],
 ) -> dict:
     properties = {}
     for i, column_name in enumerate(list_properties):
@@ -114,7 +114,7 @@ def list_region_entities(
     *,
     nom: Optional[str] = None,
     zone: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
@@ -191,7 +191,7 @@ def list_region_entities(
 
 def get_region_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
 ):
@@ -230,9 +230,10 @@ def get_region_entity_by_code(
 
 REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
+    "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
     "fields": Query(
         None,
-        description="Champs à inclure (centre, contour, bbox, surface, codeChefLieu, …)",
+        description="Liste des champs à inclure, séparés par des virgules",
     ),
     "limit": Query(100, ge=1, le=1000, description="Nombre maximum de résultats"),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),

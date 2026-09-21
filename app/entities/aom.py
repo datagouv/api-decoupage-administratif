@@ -46,9 +46,9 @@ AOM_SQL_TO_API = {v: k for k, v in AOM_API_TO_SQL.items()}
 AOM_COMPUTED_FIELDS = frozenset({"codesDepartements", "codesRegions"})
 
 
-def resolve_aom_field_lists(fields: Optional[str]):
+def resolve_aom_field_lists(fields: Optional[list[str]]):
     if fields:
-        requested_fields = [f.strip() for f in fields.split(",") if f.strip()]
+        requested_fields = fields
         for field in requested_fields:
             if field not in AOM_API_TO_SQL and field not in AOM_COMPUTED_FIELDS:
                 raise HTTPException(
@@ -140,7 +140,10 @@ def load_aom_for_commune(
     return None
 
 
-def _needs_admin_codes(fields: Optional[str], requested_fields: List[str]) -> bool:
+def _needs_admin_codes(
+    fields: Optional[list[str]],
+    requested_fields: List[str],
+) -> bool:
     return (not fields) or any(
         field in requested_fields for field in ("codesDepartements", "codesRegions")
     )
@@ -150,7 +153,7 @@ def build_aom_properties(
     row,
     list_properties: List[str],
     requested_fields: List[str],
-    fields: Optional[str],
+    fields: Optional[list[str]],
     *,
     commune_codes: Optional[list[str]] = None,
     admin_map: Optional[dict[str, tuple[Optional[str], Optional[str]]]] = None,
@@ -215,7 +218,7 @@ def build_aom_properties(
                             [maxx, maxy],
                             [minx, maxy],
                             [minx, miny],
-                        ]
+                        ],
                     ],
                 }
             if "surface" in requested_fields:
@@ -234,7 +237,7 @@ def list_aom_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -345,7 +348,7 @@ def list_aom_entities(
 
 def get_aom_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
 ):
@@ -436,7 +439,10 @@ AOM_LIST_PARAMS = {
         description="Champs à inclure (centre, contour, bbox, surface, nbCommunes, codesDepartements, codesRegions)",
     ),
     "limit": Query(
-        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+        None,
+        ge=1,
+        le=1000,
+        description="Nombre maximum de résultats (optionnel)",
     ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }
