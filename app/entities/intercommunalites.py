@@ -65,7 +65,8 @@ def parse_communes_code(raw: Optional[str]) -> list[str]:
 
 
 def load_commune_admin_codes_map(
-    db: Session, commune_codes: set[str]
+    db: Session,
+    commune_codes: set[str],
 ) -> dict[str, tuple[Optional[str], Optional[str]]]:
     if not commune_codes:
         return {}
@@ -85,7 +86,7 @@ def load_commune_admin_codes_map(
                 FROM communes
                 WHERE type_commune = 'COM'
                   AND code_insee IN ({placeholders})
-                """
+                """,
             ),
             params,
         ).fetchall()
@@ -111,13 +112,13 @@ def admin_codes_from_communes(
 
 
 def resolve_interco_field_lists(
-    fields: Optional[str],
+    fields: Optional[list[str]],
     *,
     entity_label: str = "intercommunalité",
     default_properties: Sequence[str] = INTERCO_DEFAULT_PROPERTIES,
 ):
     if fields:
-        requested_fields = [f.strip() for f in fields.split(",") if f.strip()]
+        requested_fields = fields
         for field in requested_fields:
             if field not in INTERCO_API_TO_SQL and field not in INTERCO_COMPUTED_FIELDS:
                 raise HTTPException(
@@ -168,7 +169,7 @@ def build_interco_properties(
     row,
     list_properties: List[str],
     requested_fields: List[str],
-    fields: Optional[str],
+    fields: Optional[list[str]],
     *,
     commune_codes: Optional[list[str]] = None,
     admin_map: Optional[dict[str, tuple[Optional[str], Optional[str]]]] = None,
@@ -233,7 +234,7 @@ def build_interco_properties(
                             [maxx, maxy],
                             [minx, maxy],
                             [minx, miny],
-                        ]
+                        ],
                     ],
                 }
             if "surface" in requested_fields:
@@ -264,7 +265,7 @@ def interco_exists(
         text(
             "SELECT 1 FROM interco WHERE siren = :code"
             + interco_filter_sql(params, natures=natures)
-            + " LIMIT 1"
+            + " LIMIT 1",
         ),
         params,
     ).fetchone()
@@ -272,7 +273,7 @@ def interco_exists(
 
 
 def _needs_admin_codes(
-    fields: Optional[str],
+    fields: Optional[list[str]],
     requested_fields: List[str],
     *,
     default_admin_codes: bool,
@@ -288,7 +289,7 @@ def list_interco_entities(
     nom: Optional[str] = None,
     natures: Optional[Sequence[str]] = None,
     type_filter: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
     entity_label: str = "intercommunalité",
@@ -312,7 +313,9 @@ def list_interco_entities(
             list_properties.append("nom_recherche")
 
     need_admin_codes = _needs_admin_codes(
-        fields, requested_fields, default_admin_codes=default_admin_codes
+        fields,
+        requested_fields,
+        default_admin_codes=default_admin_codes,
     )
     query_columns = list(list_properties)
     if need_admin_codes and "communes_code" not in query_columns:
@@ -321,7 +324,9 @@ def list_interco_entities(
     params: dict = {}
     list_properties_sql = ", ".join(query_columns)
     query = f"SELECT {list_properties_sql} FROM interco WHERE 1=1" + interco_filter_sql(
-        params, natures=natures, type_filter=type_filter
+        params,
+        natures=natures,
+        type_filter=type_filter,
     )
 
     if nom_query is not None and has_nom_recherche:
@@ -412,7 +417,7 @@ def list_intercommunalite_entities(
     *,
     nom: Optional[str] = None,
     type_filter: Optional[str] = None,
-    fields: Optional[str] = None,
+    fields: Optional[list[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -428,7 +433,7 @@ def list_intercommunalite_entities(
 
 def get_interco_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
     *,
@@ -444,7 +449,9 @@ def get_interco_entity_by_code(
         default_properties=default_properties,
     )
     need_admin_codes = _needs_admin_codes(
-        fields, requested_fields, default_admin_codes=default_admin_codes
+        fields,
+        requested_fields,
+        default_admin_codes=default_admin_codes,
     )
     query_columns = list(list_properties)
     if need_admin_codes and "communes_code" not in query_columns:
@@ -458,7 +465,7 @@ def get_interco_entity_by_code(
         text(
             f"SELECT {list_properties_sql} FROM interco WHERE siren = :code"
             + interco_filter_sql(params, natures=natures)
-            + " LIMIT 1"
+            + " LIMIT 1",
         ),
         params,
     ).fetchone()
@@ -524,7 +531,7 @@ def get_groupement_commune_codes(db: Session, code: str) -> list[str]:
 
 def get_intercommunalite_entity_by_code(
     code: str,
-    fields: Optional[str],
+    fields: Optional[list[str]],
     format: Literal["json", "geojson"],
     db: Session,
 ):
@@ -548,7 +555,10 @@ INTERCOMMUNALITE_LIST_PARAMS = {
         description="Champs à inclure (centre, contour, bbox, surface, population, type, financement, membres_siren, codesDepartements, codesRegions)",
     ),
     "limit": Query(
-        None, ge=1, le=1000, description="Nombre maximum de résultats (optionnel)"
+        None,
+        ge=1,
+        le=1000,
+        description="Nombre maximum de résultats (optionnel)",
     ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }
