@@ -497,6 +497,7 @@ async def list_communes_associees_deleguees(
 async def list_departements(
     nom: Optional[str] = DEPARTEMENT_LIST_PARAMS["nom"],
     zone: Optional[str] = DEPARTEMENT_LIST_PARAMS["zone"],
+    code: Optional[str] = DEPARTEMENT_LIST_PARAMS["code"],
     codeRegion: Optional[str] = DEPARTEMENT_LIST_PARAMS["codeRegion"],
     fields: Optional[list[str]] = DEPARTEMENT_LIST_PARAMS["fields"],
     limit: Optional[int] = DEPARTEMENT_LIST_PARAMS["limit"],
@@ -514,6 +515,7 @@ async def list_departements(
             db,
             nom=nom,
             zone=zone,
+            code=code,
             region=codeRegion,
             fields=fields,
             limit=limit,
@@ -620,6 +622,7 @@ async def get_departement_by_code(
 async def list_regions(
     nom: Optional[str] = REGION_LIST_PARAMS["nom"],
     zone: Optional[str] = REGION_LIST_PARAMS["zone"],
+    code: Optional[str] = REGION_LIST_PARAMS["code"],
     fields: Optional[list[str]] = REGION_LIST_PARAMS["fields"],
     limit: int = REGION_LIST_PARAMS["limit"],
     offset: int = REGION_LIST_PARAMS["offset"],
@@ -636,6 +639,7 @@ async def list_regions(
             db,
             nom=nom,
             zone=zone,
+            code=code,
             fields=fields,
             limit=limit,
             offset=offset,
@@ -779,6 +783,7 @@ async def get_region_by_code(
 )
 async def list_epcis(
     nom: Optional[str] = EPCI_LIST_PARAMS["nom"],
+    code: Optional[str] = EPCI_LIST_PARAMS["code"],
     fields: Optional[list[str]] = EPCI_LIST_PARAMS["fields"],
     limit: Optional[int] = EPCI_LIST_PARAMS["limit"],
     offset: int = EPCI_LIST_PARAMS["offset"],
@@ -794,6 +799,7 @@ async def list_epcis(
         return list_epci_entities(
             db,
             nom=nom,
+            code=code,
             fields=fields,
             limit=limit,
             offset=offset,

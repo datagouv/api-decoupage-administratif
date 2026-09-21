@@ -114,6 +114,7 @@ def list_region_entities(
     *,
     nom: Optional[str] = None,
     zone: Optional[str] = None,
+    code: Optional[str] = None,
     fields: Optional[list[str]] = None,
     limit: int = 100,
     offset: int = 0,
@@ -140,6 +141,10 @@ def list_region_entities(
     if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
         zones = [f"'{z.strip()}'" for z in zone.split(",")]
         query += f" AND zone IN ({','.join(zones)})"
+
+    if code is not None:
+        query += " AND code_region = :code_region"
+        params["code_region"] = code
 
     if nom_query is not None:
         if has_nom_recherche:
@@ -231,6 +236,7 @@ def get_region_entity_by_code(
 REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
+    "code": Query(None, description="Recherche par code région"),
     "fields": Query(
         None,
         description="Liste des champs à inclure, séparés par des virgules",

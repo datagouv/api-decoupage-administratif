@@ -1017,6 +1017,10 @@ def list_commune_entities(
         for i, commune_code in enumerate(commune_codes):
             params[f"cc_{i}"] = commune_code
 
+    if code is not None:
+        query += " AND code_insee = :code_insee"
+        params["code_insee"] = code
+
     if nom_recherche is not None:
         query += " LIMIT :candidate_limit"
         params["candidate_limit"] = NOM_SEARCH_CANDIDATE_LIMIT
