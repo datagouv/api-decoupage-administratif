@@ -20,6 +20,8 @@ sys.path.append(".")
 from anciens_codes import compute_anciens_codes_communes
 
 from app.entities.geometry import (
+    bbox_geojson_from_shape,
+    centre_geojson_from_shape,
     compute_surface_hectares,
     parse_geometry,
 )
@@ -284,7 +286,7 @@ def load_anciens_codes(engine):
         table_name, engine, if_exists="replace", index=False
     )
     print(f"\n✓ All data loaded into table '{table_name}'")
-    return load_anciens_codes
+    return df_match_current_anciens_codes
 
 
 def load_commune_data(engine):
@@ -516,7 +518,16 @@ def load_commune_geometries(engine):
         )
     )
     gdf["geometry"] = gdf["geometry"].apply(lambda geom: geom.wkt if geom else None)
-
+    gdf["bbox_geojson"] = gdf["geometry_geojson"].apply(
+        lambda geom: json.dumps(
+            bbox_geojson_from_shape(shape(parse_geometry(geom))), ensure_ascii=False
+        )
+    )
+    gdf["centre_geojson"] = gdf["geometry_geojson"].apply(
+        lambda geom: json.dumps(
+            centre_geojson_from_shape(shape(parse_geometry(geom))), ensure_ascii=False
+        )
+    )
     gdf["surface"] = gdf["geometry_geojson"].apply(
         lambda geom: compute_surface_hectares(shape(parse_geometry(geom)))
     )
@@ -602,7 +613,9 @@ def load_geometry_table_from_geojson(
                     {code_column} TEXT PRIMARY KEY,
                     nom TEXT,
                     geometry TEXT,
-                    geometry_geojson TEXT
+                    geometry_geojson TEXT,
+                    bbox_geojson TEXT,
+                    centre_geojson TEXT
                 )
             """)
         )
@@ -617,14 +630,18 @@ def load_geometry_table_from_geojson(
                 try:
                     conn.execute(
                         text(f"""
-                            INSERT INTO {table_name} ({code_column}, nom, geometry, geometry_geojson)
-                            VALUES (:code, :nom, :geometry, :geojson)
+                            INSERT INTO {table_name} ({code_column}, nom, geometry, geometry_geojson, bbox_geojson, centre_geojson)
+                            VALUES (:code, :nom, :geometry, :geojson, :bbox_geojson, :centre_geojson)
                         """),
                         {
                             "code": code,
                             "nom": nom,
                             "geometry": geom.wkt,
                             "geojson": json.dumps(mapping(geom)),
+                            "bbox_geojson": json.dumps(bbox_geojson_from_shape(geom)),
+                            "centre_geojson": json.dumps(
+                                centre_geojson_from_shape(geom)
+                            ),
                         },
                     )
                 except Exception as e:
@@ -735,7 +752,9 @@ def _ensure_interco_geometries_table(conn):
             nom TEXT,
             nb_communes INTEGER,
             geometry TEXT,
-            geometry_geojson TEXT
+            geometry_geojson TEXT,
+            bbox_geojson TEXT,
+            centre_geojson TEXT
         )
     """)
     )
@@ -781,8 +800,8 @@ def _load_interco_geometries_from_geojson(engine, geojson_path):
             try:
                 conn.execute(
                     text("""
-                        INSERT INTO interco_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
-                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
+                        INSERT INTO interco_geometries (siren, nom, nb_communes, geometry, geometry_geojson, bbox_geojson, centre_geojson)
+                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson, :bbox_geojson, :centre_geojson)
                     """),
                     {
                         "siren": siren,
@@ -792,6 +811,8 @@ def _load_interco_geometries_from_geojson(engine, geojson_path):
                         else None,
                         "geometry": geom.wkt,
                         "geojson": json.dumps(mapping(geom)),
+                        "bbox_geojson": json.dumps(bbox_geojson_from_shape(geom)),
+                        "centre_geojson": json.dumps(centre_geojson_from_shape(geom)),
                     },
                 )
                 loaded += 1
@@ -855,7 +876,9 @@ def _ensure_aom_geometries_table(conn):
             nom TEXT,
             nb_communes INTEGER,
             geometry TEXT,
-            geometry_geojson TEXT
+            geometry_geojson TEXT,
+            bbox_geojson TEXT,
+            centre_geojson TEXT
         )
     """)
     )
@@ -904,8 +927,8 @@ def _load_aom_geometries_from_geojson(engine, geojson_path):
             try:
                 conn.execute(
                     text("""
-                        INSERT INTO aom_geometries (siren, nom, nb_communes, geometry, geometry_geojson)
-                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson)
+                        INSERT INTO aom_geometries (siren, nom, nb_communes, geometry, geometry_geojson, bbox_geojson, centre_geojson)
+                        VALUES (:siren, :nom, :nb_communes, :geometry, :geojson, :bbox_geojson, :centre_geojson)
                     """),
                     {
                         "siren": siren,
@@ -915,6 +938,8 @@ def _load_aom_geometries_from_geojson(engine, geojson_path):
                         else None,
                         "geometry": geom.wkt,
                         "geojson": json.dumps(mapping(geom)),
+                        "bbox_geojson": json.dumps(bbox_geojson_from_shape(geom)),
+                        "centre_geojson": json.dumps(centre_geojson_from_shape(geom)),
                     },
                 )
                 loaded += 1
@@ -1691,6 +1716,8 @@ def create_view(engine):
                 g.max_lat as max_lat,
                 NULL as superficie,
                 ma.mairie_geojson as mairie_geojson,
+                g.bbox_geojson as bbox_geojson,
+                g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM communes_metadata m
@@ -1730,6 +1757,8 @@ def create_departements_view(engine):
                 m.cheflieu as code_chef_lieu,
                 m.zone as zone,
                 g.dep as dep_geo,
+                g.bbox_geojson as bbox_geojson,
+                g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM departements_metadata m
@@ -1763,6 +1792,8 @@ def create_regions_view(engine):
                 m.cheflieu as code_chef_lieu,
                 m.zone as zone,
                 g.reg as reg_geo,
+                g.bbox_geojson as bbox_geojson,
+                g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM regions_metadata m
@@ -1800,6 +1831,8 @@ def create_interco_view(engine):
                 m.communes_code as communes_code,
                 m.nb_communes as nb_communes,
                 g.siren as siren_geo,
+                g.bbox_geojson as bbox_geojson,
+                g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM interco_metadata m
@@ -1828,6 +1861,8 @@ def create_aom_view(engine):
                 m.nb_communes as nb_communes,
                 m.communes_code as communes_code,
                 g.siren as siren_geo,
+                g.bbox_geojson as bbox_geojson,
+                g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
                 g.geometry as geometry
             FROM aom_metadata m
