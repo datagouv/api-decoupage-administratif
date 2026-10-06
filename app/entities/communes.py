@@ -65,7 +65,7 @@ def locate_commune_at_point(
     db: Session,
     lon: float,
     lat: float,
-    fields: Optional[list[CommuneField]],
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
     config: "CommunesEndpointConfig",
     *,
     nom_recherche: Optional[str] = None,
@@ -289,7 +289,7 @@ ASSOCIEE_PARENT_NESTED_FIELDS = frozenset({"departement", "region", "epci"})
 
 
 def needs_associee_parent_enrich(
-    requested_fields: List[CommuneField],
+    requested_fields: list[CommuneField] | list[CommuneAssocieeDelegueeField],
     fields_explicit: bool,
 ) -> bool:
     """True si l'enrichissement parent est nécessaire (codes ou objets imbriqués)."""
@@ -408,7 +408,7 @@ def commune_code_region_sql(
 
 
 def resolve_commune_field_lists(
-    fields: Optional[list[CommuneField]],
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
     config: CommunesEndpointConfig = COMMUNES_CONFIG,
     *,
     allow_interco_competences: bool = False,
@@ -660,7 +660,7 @@ def build_commune_properties(
     list_properties: List[str],
     requested_fields: List[str],
     db: Session,
-    fields: Optional[list[CommuneField]],
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
     *,
     dep_names: Optional[dict] = None,
     reg_names: Optional[dict] = None,
@@ -932,7 +932,7 @@ def list_commune_entities(
     code_epci: Optional[str] = None,
     code_parent: Optional[str] = None,
     ancien_code: Optional[str] = None,
-    fields: Optional[list[CommuneField]] = None,
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]] = None,
     boost: Optional[str] = None,
     limit: Optional[int] = None,
     zone: Optional[str] = None,
@@ -943,6 +943,12 @@ def list_commune_entities(
     commune_codes: Optional[list[str]] = None,
     interco_code: Optional[str] = None,
 ):
+    if format is not None and format == "geojson":
+        if geometry is None:
+            geometry = "centre"  # Can be contour, mairie, bbox or centre if defined
+        if getattr(CommuneField, geometry) not in fields:
+            fields.append(getattr(CommuneField, geometry))
+
     nom_recherche = None
     if nom is not None:
         nom_recherche = normalize_string(nom)
@@ -973,6 +979,7 @@ def list_commune_entities(
             status_code=400,
             detail="Valeur de boost non supportée. Utilisez boost=population.",
         )
+
     list_properties, requested_fields, _ = resolve_commune_field_lists(
         fields,
         config,
@@ -1124,8 +1131,13 @@ def list_commune_entities(
             props["_score"] = (
                 match_score  # sérialisé via alias _score (schéma Pydantic)
             )
-        communes.append(props)
-
+        if format is not None and format == "geojson":
+            geom_content = props.pop("centre")
+            communes.append(
+                {"type": "Feature", "properties": props, "geometry": geom_content}
+            )
+        else:
+            communes.append(props)
     return communes
 
 
@@ -1165,10 +1177,41 @@ class CommuneField(str, Enum):
     zone = "zone"
 
 
+class CommuneAssocieeDelegueeField(str, Enum):
+    nom = "nom"
+    code = "code"
+    type = "type"
+    codeParent = "codeParent"
+    chefLieu = "chefLieu"
+    centre = "centre"
+    surface = "surface"
+    contour = "contour"
+    bbox = "bbox"
+    codeEpci = "codeEpci"
+    epci = "epci"
+    codeDepartement = "codeDepartement"
+    departement = "departement"
+    codeRegion = "codeRegion"
+    region = "region"
+
+
 class CommuneType(str, Enum):
     commune_actuelle = "commune-actuelle"
     arrondissement_municipal = "arrondissement-municipal"
 
+
+COMMUNES_ASSOCIEES_FIELDS_PARAM = Query(
+    default=[
+        CommuneAssocieeDelegueeField.nom,
+        CommuneAssocieeDelegueeField.code,
+        CommuneAssocieeDelegueeField.type,
+        CommuneAssocieeDelegueeField.chefLieu,
+        CommuneAssocieeDelegueeField.codeEpci,
+        CommuneAssocieeDelegueeField.codeDepartement,
+        CommuneAssocieeDelegueeField.codeRegion,
+    ],
+    description="Liste des champs à inclure, séparés par des virgules",
+)
 
 COMMUNE_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),

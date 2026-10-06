@@ -57,6 +57,8 @@ def list_epci_entities(
     nom: Optional[str] = None,
     code: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -66,6 +68,8 @@ def list_epci_entities(
         natures=EPCI_NATURES,
         code=code,
         fields=fields,
+        format=format,
+        geometry=geometry,
         limit=limit,
         offset=offset,
         entity_label="EPCI",
@@ -97,6 +101,8 @@ EPCI_LIST_PARAMS = {
     "nom": INTERCOMMUNALITE_LIST_PARAMS["nom"],
     "code": INTERCOMMUNALITE_LIST_PARAMS["code"],
     "fields": INTERCOMMUNALITE_LIST_PARAMS["fields"],
+    "format": INTERCOMMUNALITE_LIST_PARAMS["format"],
+    "geometry": INTERCOMMUNALITE_LIST_PARAMS["geometry"],
     "limit": INTERCOMMUNALITE_LIST_PARAMS["limit"],
     "offset": INTERCOMMUNALITE_LIST_PARAMS["offset"],
 }

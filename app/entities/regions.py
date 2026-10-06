@@ -4,6 +4,7 @@ Endpoints et logique métier pour les régions.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import List, Literal, Optional
 
 from fastapi import HTTPException, Query
@@ -116,6 +117,8 @@ def list_region_entities(
     zone: Optional[str] = None,
     code: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
@@ -233,6 +236,17 @@ def get_region_entity_by_code(
     return properties
 
 
+class Format(str, Enum):
+    json = "json"
+    geojson = "geojson"
+
+
+class RegionGeometry(str, Enum):
+    centre = "centre"
+    contour = "contour"
+    bbox = "bbox"
+
+
 REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
@@ -240,6 +254,14 @@ REGION_LIST_PARAMS = {
     "fields": Query(
         None,
         description="Liste des champs à inclure, séparés par des virgules",
+    ),
+    "format": Query(
+        Format.json,
+        description="Format de réponse attendu",
+    ),
+    "geometry": Query(
+        RegionGeometry.centre,
+        description="Géométrie à utiliser pour la sortie géographique",
     ),
     "limit": Query(100, ge=1, le=1000, description="Nombre maximum de résultats"),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),

@@ -22,7 +22,9 @@ from app.entities.communes import (
     ASSOCIEE_PARENT_ENRICH_FIELDS,
     COMMUNE_LIST_PARAMS,
     COMMUNES_ASSOCIEES_CONFIG,
+    COMMUNES_ASSOCIEES_FIELDS_PARAM,
     COMMUNES_CONFIG,
+    CommuneAssocieeDelegueeField,
     CommuneField,
     CommuneGeometry,
     Format,
@@ -57,9 +59,11 @@ from app.entities.regions import (
 from app.schemas import (
     AomGeoJSONResponse,
     AomResponseSchema,
-    CommuneAssocieeDelegueeGeoJSONResponse,
+    CommuneAssocieeDelegueeGeoJSONResponseFeature,
+    CommuneAssocieeDelegueeGeoJSONResponseFeatureCollection,
     CommuneAssocieeDelegueeResponseSchema,
-    CommuneGeoJSONResponse,
+    CommuneGeoJSONResponseFeature,
+    CommuneGeoJSONResponseFeatureCollection,
     CommuneResponseSchema,
     DepartementGeoJSONResponse,
     DepartementResponseSchema,
@@ -287,7 +291,7 @@ def load_interco_batch(
 
 @app.get(
     "/communes/{code}",
-    response_model=Union[CommuneResponseSchema, CommuneGeoJSONResponse],
+    response_model=Union[CommuneResponseSchema, CommuneGeoJSONResponseFeature],
     response_model_exclude_none=True,
     responses={
         404: {"model": ErrorResponse, "description": "Commune non trouvée"},
@@ -330,7 +334,11 @@ async def get_commune_by_code(
 
 @app.get(
     "/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["Communes"],
     summary="Recherche des communes",
@@ -364,7 +372,7 @@ async def list_communes(
     """
     try:
         dep_code = resolve_code_departement_filter(codeDepartement)
-        return list_commune_entities(
+        content = list_commune_entities(
             db,
             COMMUNES_CONFIG,
             nom=nom,
@@ -387,6 +395,10 @@ async def list_communes(
             geometry=geometry,
             type=type,
         )
+        if format is not None and format == "geojson":
+            return {"type": "FeatureCollection", "features": content}
+        else:
+            return content
     except HTTPException:
         raise
     except Exception as e:
@@ -397,7 +409,7 @@ async def list_communes(
     "/communes_associees_deleguees/{code}",
     response_model=Union[
         CommuneAssocieeDelegueeResponseSchema,
-        CommuneAssocieeDelegueeGeoJSONResponse,
+        CommuneAssocieeDelegueeGeoJSONResponseFeature,
     ],
     response_model_exclude_none=True,
     responses={
@@ -440,7 +452,8 @@ async def get_commune_associee_deleguee_by_code(
     "/communes_associees_deleguees",
     response_model=Union[
         CommuneAssocieeDelegueeResponseSchema,
-        List[CommuneAssocieeDelegueeGeoJSONResponse],
+        List[CommuneAssocieeDelegueeResponseSchema],
+        CommuneAssocieeDelegueeGeoJSONResponseFeatureCollection,
     ],
     response_model_exclude_none=True,
     tags=["Communes associées et déléguées"],
@@ -450,10 +463,11 @@ async def list_communes_associees_deleguees(
     nom: Optional[str] = COMMUNE_LIST_PARAMS["nom"],
     lat: Optional[float] = COMMUNE_LIST_PARAMS["lat"],
     lon: Optional[float] = COMMUNE_LIST_PARAMS["lon"],
-    codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[
+        list[CommuneAssocieeDelegueeField]
+    ] = COMMUNES_ASSOCIEES_FIELDS_PARAM,
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -473,7 +487,6 @@ async def list_communes_associees_deleguees(
             nom=nom,
             lat=lat,
             lon=lon,
-            code_postal=codePostal,
             code_departement=dep_code,
             region=codeRegion,
             fields=fields,
@@ -500,6 +513,8 @@ async def list_departements(
     code: Optional[str] = DEPARTEMENT_LIST_PARAMS["code"],
     codeRegion: Optional[str] = DEPARTEMENT_LIST_PARAMS["codeRegion"],
     fields: Optional[list[str]] = DEPARTEMENT_LIST_PARAMS["fields"],
+    format: Optional[str] = DEPARTEMENT_LIST_PARAMS["format"],
+    geometry: Optional[str] = DEPARTEMENT_LIST_PARAMS["geometry"],
     limit: Optional[int] = DEPARTEMENT_LIST_PARAMS["limit"],
     offset: int = DEPARTEMENT_LIST_PARAMS["offset"],
     db: Session = Depends(get_db),
@@ -518,6 +533,8 @@ async def list_departements(
             code=code,
             region=codeRegion,
             fields=fields,
+            format=format,
+            geometry=geometry,
             limit=limit,
             offset=offset,
         )
@@ -529,7 +546,11 @@ async def list_departements(
 
 @app.get(
     "/departements/{code}/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["Départements", "Communes"],
     summary="Renvoie les communes d'un département",
@@ -624,6 +645,8 @@ async def list_regions(
     zone: Optional[str] = REGION_LIST_PARAMS["zone"],
     code: Optional[str] = REGION_LIST_PARAMS["code"],
     fields: Optional[list[str]] = REGION_LIST_PARAMS["fields"],
+    format: Optional[str] = REGION_LIST_PARAMS["format"],
+    geometry: Optional[str] = REGION_LIST_PARAMS["geometry"],
     limit: int = REGION_LIST_PARAMS["limit"],
     offset: int = REGION_LIST_PARAMS["offset"],
     db: Session = Depends(get_db),
@@ -641,6 +664,8 @@ async def list_regions(
             zone=zone,
             code=code,
             fields=fields,
+            format=format,
+            geometry=geometry,
             limit=limit,
             offset=offset,
         )
@@ -690,7 +715,11 @@ async def list_region_departements(
 
 @app.get(
     "/regions/{code}/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["Régions", "Communes"],
     summary="Renvoie les communes d'une région",
@@ -812,7 +841,11 @@ async def list_epcis(
 
 @app.get(
     "/epcis/{code}/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["EPCI", "Communes"],
     summary="Renvoie les communes d'un EPCI",
@@ -934,7 +967,11 @@ async def list_intercommunalites(
 
 @app.get(
     "/groupement_collectivites_territoriales/{code}/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["Intercommunalités", "Communes"],
 )
@@ -1029,6 +1066,8 @@ async def get_intercommunalite_by_code(
 async def list_aom(
     nom: Optional[str] = AOM_LIST_PARAMS["nom"],
     fields: Optional[list[str]] = AOM_LIST_PARAMS["fields"],
+    format: Optional[str] = AOM_LIST_PARAMS["format"],
+    geometry: Optional[str] = AOM_LIST_PARAMS["geometry"],
     limit: Optional[int] = AOM_LIST_PARAMS["limit"],
     offset: int = AOM_LIST_PARAMS["offset"],
     db: Session = Depends(get_db),
@@ -1044,6 +1083,8 @@ async def list_aom(
             db,
             nom=nom,
             fields=fields,
+            format=format,
+            geometry=geometry,
             limit=limit,
             offset=offset,
         )
@@ -1055,7 +1096,11 @@ async def list_aom(
 
 @app.get(
     "/aom/{code}/communes",
-    response_model=Union[CommuneResponseSchema, List[CommuneResponseSchema]],
+    response_model=Union[
+        CommuneResponseSchema,
+        List[CommuneResponseSchema],
+        CommuneGeoJSONResponseFeatureCollection,
+    ],
     response_model_exclude_none=True,
     tags=["AOM", "Communes"],
 )

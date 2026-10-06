@@ -5,6 +5,7 @@ Endpoints et logique métier pour les intercommunalités (table interco).
 from __future__ import annotations
 
 import json
+from enum import Enum
 from typing import List, Literal, Optional, Sequence
 
 from fastapi import HTTPException, Query
@@ -291,6 +292,8 @@ def list_interco_entities(
     natures: Optional[Sequence[str]] = None,
     type_filter: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
     entity_label: str = "intercommunalité",
@@ -423,6 +426,8 @@ def list_intercommunalite_entities(
     nom: Optional[str] = None,
     type_filter: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -431,6 +436,8 @@ def list_intercommunalite_entities(
         nom=nom,
         type_filter=type_filter,
         fields=fields,
+        format=format,
+        geometry=geometry,
         limit=limit,
         offset=offset,
     )
@@ -549,6 +556,17 @@ def get_intercommunalite_entity_by_code(
     )
 
 
+class Format(str, Enum):
+    json = "json"
+    geojson = "geojson"
+
+
+class IntercommunaliteGeometry(str, Enum):
+    centre = "centre"
+    contour = "contour"
+    bbox = "bbox"
+
+
 INTERCOMMUNALITE_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "code": Query(None, description="Recherche par code SIREN"),
@@ -559,6 +577,14 @@ INTERCOMMUNALITE_LIST_PARAMS = {
     "fields": Query(
         None,
         description="Champs à inclure (centre, contour, bbox, surface, population, type, financement, membres_siren, codesDepartements, codesRegions)",
+    ),
+    "format": Query(
+        Format.json,
+        description="Format de réponse attendu",
+    ),
+    "geometry": Query(
+        IntercommunaliteGeometry.centre,
+        description="Géométrie à utiliser pour la sortie géographique",
     ),
     "limit": Query(
         None,
