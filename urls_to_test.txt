@@ -35,7 +35,7 @@ https://geo.api.gouv.fr/communes_associees_deleguees/49069
 https://geo.api.gouv.fr/communes/44109?fields=nom,code,codeDepartement,siren,codeEpci,CodeRegion,codesPostaux,population,region
 https://geo.api.gouv.fr/communes/75114
 https://geo.api.gouv.fr/communes?codePostal=75014
-https://geo.api.gouv.fr/communes?nom=Paris&format=geojson&geometry=mairie&boost=populationhttps://geo.api.gouv.fr/communes?codePostal=75014&type=arrondissement-municipal,commune-actuelle
+https://geo.api.gouv.fr/communes?nom=Paris&format=geojson&geometry=mairie&boost=population
 https://geo.api.gouv.fr/communes?codePostal=75014&type=arrondissement-municipal
 https://geo.api.gouv.fr/communes?codePostal=75014&type=arrondissement-municipal,commune-actuelle
 https://geo.api.gouv.fr/communes/19146

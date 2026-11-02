@@ -4,6 +4,7 @@ Endpoints et logique métier pour les AOM (Autorités Organisatrices de Mobilit�
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import List, Literal, Optional
 
 from fastapi import HTTPException, Query
@@ -238,6 +239,8 @@ def list_aom_entities(
     *,
     nom: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -432,6 +435,17 @@ def get_aom_commune_codes(db: Session, code: str) -> list[str]:
     return parse_communes_code(row[0] if row else None)
 
 
+class Format(str, Enum):
+    json = "json"
+    geojson = "geojson"
+
+
+class AomGeometry(str, Enum):
+    centre = "centre"
+    contour = "contour"
+    bbox = "bbox"
+
+
 AOM_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "fields": Query(
@@ -443,6 +457,14 @@ AOM_LIST_PARAMS = {
         ge=1,
         le=1000,
         description="Nombre maximum de résultats (optionnel)",
+    ),
+    "format": Query(
+        Format.json,
+        description="Format de réponse attendu",
+    ),
+    "geometry": Query(
+        AomGeometry.centre,
+        description="Géométrie à utiliser pour la sortie géographique",
     ),
     "offset": Query(0, ge=0, description="Offset pour la pagination"),
 }

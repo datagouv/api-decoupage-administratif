@@ -319,7 +319,7 @@ class DepartementGeoJSONResponse(BaseModel):
     )
 
 
-class CommuneGeoJSONResponse(BaseModel):
+class CommuneGeoJSONResponseFeature(BaseModel):
     """Schema for GeoJSON response"""
 
     type: str = "Feature"
@@ -330,7 +330,14 @@ class CommuneGeoJSONResponse(BaseModel):
     )
 
 
-class CommuneAssocieeDelegueeGeoJSONResponse(BaseModel):
+class CommuneGeoJSONResponseFeatureCollection(BaseModel):
+    """Schema for GeoJSON response"""
+
+    type: str = "FeatureCollection"
+    features: List[CommuneGeoJSONResponseFeature]
+
+
+class CommuneAssocieeDelegueeGeoJSONResponseFeature(BaseModel):
     """Schema for GeoJSON response"""
 
     type: str = "Feature"
@@ -342,6 +349,13 @@ class CommuneAssocieeDelegueeGeoJSONResponse(BaseModel):
         None,
         description="Géométrie au format GeoJSON",
     )
+
+
+class CommuneAssocieeDelegueeGeoJSONResponseFeatureCollection(BaseModel):
+    """Schema for GeoJSON response"""
+
+    type: str = "FeatureCollection"
+    features: List[CommuneAssocieeDelegueeGeoJSONResponseFeature]
 
 
 class ErrorResponse(BaseModel):

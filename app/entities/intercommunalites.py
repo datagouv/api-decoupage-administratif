@@ -5,6 +5,7 @@ Endpoints et logique métier pour les intercommunalités (table interco).
 from __future__ import annotations
 
 import json
+from enum import Enum
 from typing import List, Literal, Optional, Sequence
 
 from fastapi import HTTPException, Query
@@ -32,9 +33,9 @@ INTERCO_API_TO_SQL = {
     "population": "population",
     "membres_siren": "membres_siren",
     "contour": "geometry_geojson",
-    "centre": "geometry_geojson",
-    "bbox": "geometry_geojson",
-    "surface": "geometry_geojson",
+    "centre": "centre_geojson",
+    "bbox": "bbox_geojson",
+    "surface": "surface",
 }
 INTERCO_SQL_TO_API = {v: k for k, v in INTERCO_API_TO_SQL.items()}
 INTERCO_COMPUTED_FIELDS = frozenset({"codesDepartements", "codesRegions"})
@@ -138,14 +139,6 @@ def resolve_interco_field_lists(
         sql_col = INTERCO_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if (
-        any(
-            field in requested_fields
-            for field in ("contour", "centre", "bbox", "surface")
-        )
-        and "geometry_geojson" not in list_properties
-    ):
-        list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
 
@@ -291,6 +284,8 @@ def list_interco_entities(
     natures: Optional[Sequence[str]] = None,
     type_filter: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
     entity_label: str = "intercommunalité",
@@ -423,6 +418,8 @@ def list_intercommunalite_entities(
     nom: Optional[str] = None,
     type_filter: Optional[str] = None,
     fields: Optional[list[str]] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> list[dict]:
@@ -431,6 +428,8 @@ def list_intercommunalite_entities(
         nom=nom,
         type_filter=type_filter,
         fields=fields,
+        format=format,
+        geometry=geometry,
         limit=limit,
         offset=offset,
     )
@@ -549,6 +548,17 @@ def get_intercommunalite_entity_by_code(
     )
 
 
+class Format(str, Enum):
+    json = "json"
+    geojson = "geojson"
+
+
+class IntercommunaliteGeometry(str, Enum):
+    centre = "centre"
+    contour = "contour"
+    bbox = "bbox"
+
+
 INTERCOMMUNALITE_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
     "code": Query(None, description="Recherche par code SIREN"),
@@ -559,6 +569,14 @@ INTERCOMMUNALITE_LIST_PARAMS = {
     "fields": Query(
         None,
         description="Champs à inclure (centre, contour, bbox, surface, population, type, financement, membres_siren, codesDepartements, codesRegions)",
+    ),
+    "format": Query(
+        Format.json,
+        description="Format de réponse attendu",
+    ),
+    "geometry": Query(
+        IntercommunaliteGeometry.centre,
+        description="Géométrie à utiliser pour la sortie géographique",
     ),
     "limit": Query(
         None,
