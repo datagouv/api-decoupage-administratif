@@ -615,7 +615,8 @@ def load_geometry_table_from_geojson(
                     geometry TEXT,
                     geometry_geojson TEXT,
                     bbox_geojson TEXT,
-                    centre_geojson TEXT
+                    centre_geojson TEXT,
+                    surface REAL
                 )
             """)
         )
@@ -630,8 +631,8 @@ def load_geometry_table_from_geojson(
                 try:
                     conn.execute(
                         text(f"""
-                            INSERT INTO {table_name} ({code_column}, nom, geometry, geometry_geojson, bbox_geojson, centre_geojson)
-                            VALUES (:code, :nom, :geometry, :geojson, :bbox_geojson, :centre_geojson)
+                            INSERT INTO {table_name} ({code_column}, nom, geometry, geometry_geojson, bbox_geojson, centre_geojson, surface)
+                            VALUES (:code, :nom, :geometry, :geojson, :bbox_geojson, :centre_geojson, :surface)
                         """),
                         {
                             "code": code,
@@ -642,6 +643,7 @@ def load_geometry_table_from_geojson(
                             "centre_geojson": json.dumps(
                                 centre_geojson_from_shape(geom)
                             ),
+                            "surface": compute_surface_hectares(geom),
                         },
                     )
                 except Exception as e:
@@ -754,7 +756,8 @@ def _ensure_interco_geometries_table(conn):
             geometry TEXT,
             geometry_geojson TEXT,
             bbox_geojson TEXT,
-            centre_geojson TEXT
+            centre_geojson TEXT,
+            surface REAL
         )
     """)
     )
@@ -878,7 +881,8 @@ def _ensure_aom_geometries_table(conn):
             geometry TEXT,
             geometry_geojson TEXT,
             bbox_geojson TEXT,
-            centre_geojson TEXT
+            centre_geojson TEXT,
+            surface REAL
         )
     """)
     )
@@ -1601,6 +1605,15 @@ def create_indexes(engine):
             ON communes_metadata(typecom)
         """)
         )
+        print(
+            "  Creating index on both communes_metadata.com and communes_metadata.typecom..."
+        )
+        conn.execute(
+            text("""
+            CREATE INDEX IF NOT EXISTS idx_communes_metadata_com_typecom
+            ON communes_metadata(com, typecom)
+        """)
+        )
 
         print("  Creating index on communes_metadata.nom_recherche...")
         conn.execute(
@@ -1715,6 +1728,7 @@ def create_view(engine):
                 g.max_lon as max_lon,
                 g.max_lat as max_lat,
                 NULL as superficie,
+                surface as surface,
                 ma.mairie_geojson as mairie_geojson,
                 g.bbox_geojson as bbox_geojson,
                 g.centre_geojson as centre_geojson,
@@ -1757,6 +1771,7 @@ def create_departements_view(engine):
                 m.cheflieu as code_chef_lieu,
                 m.zone as zone,
                 g.dep as dep_geo,
+                g.surface as surface,
                 g.bbox_geojson as bbox_geojson,
                 g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
@@ -1792,6 +1807,7 @@ def create_regions_view(engine):
                 m.cheflieu as code_chef_lieu,
                 m.zone as zone,
                 g.reg as reg_geo,
+                g.surface as surface,
                 g.bbox_geojson as bbox_geojson,
                 g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
@@ -1831,6 +1847,7 @@ def create_interco_view(engine):
                 m.communes_code as communes_code,
                 m.nb_communes as nb_communes,
                 g.siren as siren_geo,
+                g.surface as surface,
                 g.bbox_geojson as bbox_geojson,
                 g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,
@@ -1861,6 +1878,7 @@ def create_aom_view(engine):
                 m.nb_communes as nb_communes,
                 m.communes_code as communes_code,
                 g.siren as siren_geo,
+                g.surface as surface,
                 g.bbox_geojson as bbox_geojson,
                 g.centre_geojson as centre_geojson,
                 g.geometry_geojson as geometry_geojson,

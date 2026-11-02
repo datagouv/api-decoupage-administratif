@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, List, Literal, Optional
@@ -190,8 +191,8 @@ dict_apigeo = {
     "codesPostaux": "codes_postaux",
     "population": "population",
     "contour": "geometry_geojson",
-    "centre": "geometry_geojson",
-    "bbox": "geometry_geojson",
+    "centre": "centre_geojson",
+    "bbox": "bbox_geojson",
     "mairie": "mairie_geojson",
     "chefLieu": "commune_parente",
     "type": "type_commune",
@@ -461,6 +462,7 @@ def resolve_commune_field_lists(
     for field in requested_fields:
         if field in dict_apigeo and dict_apigeo[field] not in list_properties:
             list_properties.append(dict_apigeo[field])
+
     if (
         "codeDepartement" in requested_fields
         and "code_departement" not in list_properties
@@ -479,13 +481,6 @@ def resolve_commune_field_lists(
         and "siren" not in list_properties
     ):
         list_properties.append("siren")
-    if (
-        any(f in requested_fields for f in ("mairie", "contour", "centre", "bbox"))
-        and "geometry_geojson" not in list_properties
-    ):
-        list_properties.append("geometry_geojson")
-    if "mairie" in requested_fields and "mairie_geojson" not in list_properties:
-        list_properties.append("mairie_geojson")
     if config.enrich_from_parent and needs_associee_parent_enrich(
         requested_fields,
         fields_explicit=True,
@@ -512,7 +507,7 @@ def build_commune_geojson_feature(
     list_properties: List[str],
     requested_fields: List[str],
     db: Session,
-    fields: Optional[list[CommuneField]],
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
     geom_for_centre: Optional[str] = None,
     config: CommunesEndpointConfig = COMMUNES_CONFIG,
 ):
@@ -528,15 +523,13 @@ def build_commune_geojson_feature(
         fields,
         config=config,
     )
-    geometry = properties.get("centre")
-    if geometry is None:
-        if geom_for_centre is None and "geometry_geojson" in list_properties:
-            geom_for_centre = result[list_properties.index("geometry_geojson")]
-        geometry = commune_centre_geometry(geom_for_centre)
+    geom = properties.pop(geom_for_centre)
+    if isinstance(geom, str):
+        geom = json.loads(geom)
     return {
         "type": "Feature",
         "properties": properties,
-        "geometry": geometry,
+        "geometry": geom,
     }
 
 
@@ -680,8 +673,9 @@ def build_commune_properties(
         if api_field == "contour":
             parsed_geometry = parse_geometry(value)
             value = parsed_geometry if "contour" in requested_fields else None
-        if api_field == "mairie":
+        if api_field in ("centre", "bbox", "mairie"):
             value = parse_geometry(value)
+
         properties[api_field] = value
 
     code_insee = properties.get("code")
@@ -734,7 +728,9 @@ def build_commune_properties(
         epci_nom = properties.get("epci")
         if epci_code or epci_nom:
             properties["epci"] = {"code": epci_code, "nom": epci_nom}
-
+    else:
+        if "epci" in properties:
+            properties.pop("epci")
     if COMMUNE_AOM_FIELD in requested_fields:
         aom = load_aom_for_commune(
             db,
@@ -855,28 +851,39 @@ def build_commune_properties(
     if fields:
         allowed = {"nom", "code"} | set(requested_fields)
         properties = {k: v for k, v in properties.items() if k in allowed}
-
     return properties
 
 
 def get_commune_entity_by_code(
     code: str,
-    fields: Optional[list[CommuneField]],
+    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
     format: Literal["json", "geojson"],
+    geometry: str,
     db: Session,
     config: CommunesEndpointConfig,
     *,
     allow_aom: bool = False,
 ):
+
     list_properties, requested_fields, _ = resolve_commune_field_lists(
         fields,
         config,
         allow_aom=allow_aom,
     )
     query_columns = list(list_properties)
-    if format == "geojson" and "geometry_geojson" not in query_columns:
-        query_columns.append("geometry_geojson")
+
+    if format is not None and format == "geojson":
+        if geometry is None:
+            geometry = "centre"  # Can be contour, mairie, bbox or centre if defined
+        if getattr(CommuneField, geometry) not in requested_fields:
+            query_columns.append(dict_apigeo[geometry])
+
+    list_properties = tuple(query_columns)
+    requested_fields = list(requested_fields)
+    requested_fields.append(geometry)
+    # requested_fields = tuple(requested_fields)
     list_properties_sql = ", ".join(query_columns)
+    list_properties = list(query_columns)
 
     params: dict = {"code": code}
     sql = (
@@ -893,17 +900,13 @@ def get_commune_entity_by_code(
 
     if format == "geojson":
         row = result
-        geom_for_centre = None
-        if len(query_columns) > len(list_properties):
-            geom_for_centre = row[len(list_properties)]
-            row = row[: len(list_properties)]
         return build_commune_geojson_feature(
             row,
             list_properties,
             requested_fields,
             db,
             fields,
-            geom_for_centre=geom_for_centre,
+            geom_for_centre=geometry,
             config=config,
         )
 
@@ -1053,7 +1056,8 @@ def list_commune_entities(
         if limit is not None:
             query += " LIMIT :limit"
             params["limit"] = limit
-
+    print(query)
+    print(params)
     results = db.execute(text(query), params).fetchall()
 
     dep_names = (
@@ -1132,7 +1136,9 @@ def list_commune_entities(
                 match_score  # sérialisé via alias _score (schéma Pydantic)
             )
         if format is not None and format == "geojson":
-            geom_content = props.pop("centre")
+            geom_content = props.pop(geometry)
+            if isinstance(geom_content, str):
+                geom_content = json.loads(geom_content)
             communes.append(
                 {"type": "Feature", "properties": props, "geometry": geom_content}
             )

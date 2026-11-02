@@ -33,9 +33,9 @@ INTERCO_API_TO_SQL = {
     "population": "population",
     "membres_siren": "membres_siren",
     "contour": "geometry_geojson",
-    "centre": "geometry_geojson",
-    "bbox": "geometry_geojson",
-    "surface": "geometry_geojson",
+    "centre": "centre_geojson",
+    "bbox": "bbox_geojson",
+    "surface": "surface",
 }
 INTERCO_SQL_TO_API = {v: k for k, v in INTERCO_API_TO_SQL.items()}
 INTERCO_COMPUTED_FIELDS = frozenset({"codesDepartements", "codesRegions"})
@@ -139,14 +139,6 @@ def resolve_interco_field_lists(
         sql_col = INTERCO_API_TO_SQL[field]
         if sql_col not in list_properties:
             list_properties.append(sql_col)
-    if (
-        any(
-            field in requested_fields
-            for field in ("contour", "centre", "bbox", "surface")
-        )
-        and "geometry_geojson" not in list_properties
-    ):
-        list_properties.append("geometry_geojson")
     return list_properties, requested_fields, True
 
 
