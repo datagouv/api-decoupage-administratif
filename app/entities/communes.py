@@ -26,6 +26,11 @@ from app.nom_search import (
 from app.normalize_string import normalize_string
 from app.schemas import CommuneResponseSchema
 
+match_type_params_with_sql_dict = {
+    "arrondissement-municipal": "ARM",
+    "commune-actuelle": "COM",
+}
+
 
 def pick_nearest_commune_row(
     rows: list,
@@ -942,7 +947,9 @@ def list_commune_entities(
     offset: int = 0,
     format: Optional[str] = None,
     geometry: Optional[str] = None,
-    type: list[str] = None,
+    type: Optional[
+        list[Literal["arrondissement-municipal", "commune-actuelle"]]
+    ] = None,
     commune_codes: Optional[list[str]] = None,
     interco_code: Optional[str] = None,
 ):
@@ -1000,11 +1007,23 @@ def list_commune_entities(
         WHERE 1=1
     """
     params: dict = {}
-    query += config.type_filter_sql(params)
+    if type is not None:
+        if len(type) == 1:
+            if type[0] == "commune-actuelle":
+                query += config.type_filter_sql(params)
+            else:
+                params["type_commune"] = "ARM"
+                query += " AND type_commune = :type_commune"
+        else:
+            in_type_param = ",".join(
+                [f"'{match_type_params_with_sql_dict[t]}'" for t in type]
+            )
+            query += f" AND type_commune IN ({in_type_param})"
+    else:
+        query += config.type_filter_sql(params)
 
     if nom_recherche is not None:
         query += nom_search_sql_clause(params, nom_recherche)
-
     if code_postal:
         query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
         params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
@@ -1056,8 +1075,7 @@ def list_commune_entities(
         if limit is not None:
             query += " LIMIT :limit"
             params["limit"] = limit
-    print(query)
-    print(params)
+
     results = db.execute(text(query), params).fetchall()
 
     dep_names = (
@@ -1287,7 +1305,7 @@ COMMUNE_LIST_PARAMS = {
         description="Géométrie à utiliser pour la sortie géographique",
     ),
     "type": Query(
-        None,
+        "commune-actuelle",
         description="",
     ),
     "boost": Query(

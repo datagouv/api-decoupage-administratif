@@ -233,7 +233,9 @@ async def list_communes(
     ancienCode: Optional[str] = COMMUNE_LIST_PARAMS["ancienCode"],
     format: Format = COMMUNE_LIST_PARAMS["format"],
     geometry: CommuneGeometry = COMMUNE_LIST_PARAMS["geometry"],
-    type: Optional[list[str]] = COMMUNE_LIST_PARAMS["type"],
+    type: Optional[
+        list[Literal["arrondissement-municipal", "commune-actuelle"]]
+    ] = COMMUNE_LIST_PARAMS["type"],
     db: Session = Depends(get_db),
 ):
     """
