@@ -1305,7 +1305,7 @@ COMMUNE_LIST_PARAMS = {
         description="Géométrie à utiliser pour la sortie géographique",
     ),
     "type": Query(
-        "commune-actuelle",
+        ["commune-actuelle"],
         description="",
     ),
     "boost": Query(
