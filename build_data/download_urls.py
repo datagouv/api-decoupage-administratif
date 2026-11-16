@@ -1,27 +1,28 @@
 # URLs
+# 2026 link
 COG_URL = (
-    "https://www.data.gouv.fr/api/1/datasets/r/91a95bee-c7c8-45f9-a8aa-f14cc4697545"
+    "https://www.data.gouv.fr/api/1/datasets/r/c5800591-813b-4ce2-9a3f-739a9c5d9558"
 )
 MOUVEMENTS_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/1b96750d-08df-433b-a2d1-a8ea7545ece3"
 )
+# Lien vers un donnée 2025 mais pas de 2026 identique  sur https://www.data.gouv.fr/datasets/base-nationale-sur-les-intercommunalites
 BANATIC_SIREN_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/5d3cfdd0-00de-43fe-a5db-dffeacec6fc7"
 )
+# Lien vers un donnée 2025 mais pas de 2026 identique  sur https://www.data.gouv.fr/datasets/base-nationale-sur-les-intercommunalites
 BANATIC_INTERCO_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/6e05c448-62cc-4470-aa0f-4f31adea0bc4"
 )
 LAPOSTE_URL = "https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/data-files/019HexaSmal.csv"
+# Lien vers un donnée 2025 mais pas de 2026 identique sur https://www.data.gouv.fr/datasets/base-nationale-sur-les-intercommunalites
 INTERCO_LIST_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/25571b3e-a5ce-4567-bfb4-650504644d7b"
 )
+# Problème = export à date donc pas moyen par défaut d'être consistant...
 INTERCO_MEMBERS_URL = "https://www.banatic.interieur.gouv.fr/consultation/api/export/pregenere/telecharger/France"
 
-AOM_SOURCE_URL = (
-    "https://static.data.gouv.fr/resources/"
-    "liste-et-composition-des-autorites-organisatrices-de-la-mobilite-aom/"
-    "20260423-072522/base-rt-2025-v11.ods"
-)
+AOM_SOURCE_URL = "https://static.data.gouv.fr/resources/liste-et-composition-des-autorites-organisatrices-de-la-mobilite-aom/20260716-092939/base-rt-2026.ods"
 
 DEPARTEMENTS_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/54a8263d-6e2d-48d5-b214-aa17cc13f7a0"

@@ -173,7 +173,7 @@ def download_codes_postaux():
     print("\n📥 Downloading postal codes from La Poste...")
 
     try:
-        response = requests.get(LAPOSTE_URL, timeout=30)
+        response = requests.get(LAPOSTE_URL, timeout=30, verify=False)
         response.raise_for_status()
         print("✓ Download complete. Loading postal codes...")
     except Exception as e:
@@ -322,6 +322,38 @@ def download_and_filter_communes():
 
     print("\n📊 Filtering and saving data...")
     communes_df = df[df["TYPECOM"] == "COM"].copy()
+
+    coma_df = df[(df["TYPECOM"] == "COMA")].copy()
+    comd_df = df[(df["TYPECOM"] == "COMD")].copy()
+
+    coma_df = (
+        coma_df[["COM", "LIBELLE", "COMPARENT"]]
+        .rename(columns={"COM": "code", "LIBELLE": "nom"})
+        .groupby("COMPARENT")
+        .apply(lambda x: x.to_json(orient="records"))
+        .reset_index()
+        .rename(columns={0: "associees"})
+    )
+    comd_df = (
+        comd_df[["COM", "LIBELLE", "COMPARENT"]]
+        .rename(columns={"COM": "code", "LIBELLE": "nom"})
+        .groupby("COMPARENT")
+        .apply(lambda x: x.to_json(orient="records"))
+        .reset_index()
+        .rename(columns={0: "deleguees"})
+    )
+
+    communes_df = (
+        communes_df.set_index("COM")
+        .join(coma_df.set_index("COMPARENT"), rsuffix="_joined")
+        .reset_index()
+    )
+    communes_df = (
+        communes_df.set_index("COM")
+        .join(comd_df.set_index("COMPARENT"), rsuffix="_joined")
+        .reset_index()
+    )
+
     communes_file = os.path.join(DATA_DIR, "communes.csv")
     print(f"\n  ✓ Communes (TYPECOM='COM'): {len(communes_df)}")
     if "Siren" in communes_df.columns:
@@ -347,9 +379,43 @@ def download_and_filter_communes():
         print(f"    - With postal codes: {arm_df['codes_postaux'].notna().sum()}")
     arm_df.to_csv(arm_file, index=False, encoding="utf-8")
     print(f"    - Saved to: {arm_file}")
-
     # Filter and save communes déléguées/associées (COMD/COMA)
     comda_df = df[(df["TYPECOM"] == "COMD") | (df["TYPECOM"] == "COMA")].copy()
+    # Fix unfilled departement and reg info in original INSEE file
+    comda_df = (
+        comda_df.set_index("COMPARENT")
+        .join(communes_df.set_index("COM"), rsuffix="_joined")
+        .rename(columns={"COMPARENT": "COMPARENT_EMPTY"})
+        .reset_index()[
+            [
+                "TYPECOM",
+                "COM",
+                "REG_joined",
+                "DEP_joined",
+                "CTCD_joined",
+                "ARR_joined",
+                "TNCC",
+                "NCC",
+                "NCCENR",
+                "LIBELLE",
+                "CAN_joined",
+                "COMPARENT",
+                "siren_interco_joined",
+                "nom_interco_joined",
+            ]
+        ]
+        .rename(
+            columns={
+                "REG_joined": "REG",
+                "DEP_joined": "DEP",
+                "siren_interco_joined": "siren_interco",
+                "nom_interco_joined": "nom_interco",
+                "ARR_joined": "ARR",
+                "CAN_joined": "CAN",
+                "CTCD_joined": "CTCD",
+            }
+        )
+    )
     comda_file = os.path.join(DATA_DIR, "communes-associees-ou-deleguees.csv")
     print(
         f"\n  ✓ Communes déléguées/associées (TYPECOM='COMD'/'COMA'): {len(comda_df)}"
@@ -1013,14 +1079,14 @@ def download_and_prepare_aom(
 def download_decoupage_administratif_data(force_aom_download: bool = False):
     """Exécute l'ensemble des téléchargements et préparations."""
     download_and_filter_communes()
-    download_departements()
-    download_regions()
+    # download_departements()
+    # download_regions()
 
-    interco_df = download_interco_list()
-    members_df = download_interco_members()
-    enrich_interco_with_communes(interco_df, members_df)
+    # interco_df = download_interco_list()
+    # members_df = download_interco_members()
+    # enrich_interco_with_communes(interco_df, members_df)
 
-    download_and_prepare_aom(force_download=force_aom_download)
+    # download_and_prepare_aom(force_download=force_aom_download)
 
 
 if __name__ == "__main__":
