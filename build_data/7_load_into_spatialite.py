@@ -413,6 +413,8 @@ def load_commune_data(engine):
             "zone",
             "nom_recherche",
             "anciens_codes",
+            "associees",
+            "deleguees",
         ]
     ]
 
@@ -1709,6 +1711,8 @@ def create_view(engine):
                 m.codes_postaux as codes_postaux,
                 m.anciens_codes as anciens_codes,
                 m.zone as zone,
+                m.associees as associees,
+                m.deleguees as deleguees,
                 g.code as code_geo,
                 -- g.insee_com as insee_com_geo,
                 -- g.insee_arm as insee_arm_geo,
