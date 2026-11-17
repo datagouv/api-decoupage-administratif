@@ -26,11 +26,11 @@ class CommuneResponseSchema(BaseModel):
         None,
         description="Type d'entité : commune-deleguee (COMD) ou commune-associee (COMA)",
     )
-    associees: Optional[List[str]] = Field(
+    associees: Optional[List[Dict[str, Any]]] = Field(
         None,
         description="Liste des codes INSEE des communes associées de la commune, si présentes",
     )
-    deleguees: Optional[List[str]] = Field(
+    deleguees: Optional[List[Dict[str, Any]]] = Field(
         None,
         description="Liste des codes INSEE des communes déléguées de la commune, si présentes",
     )

@@ -203,6 +203,8 @@ dict_apigeo = {
     "type": "type_commune",
     "anciensCodes": "anciens_codes",
     "surface": "surface",
+    "associees": "associees",
+    "deleguees": "deleguees",
 }
 
 dict_apigeo_reverse = {v: k for k, v in dict_apigeo.items()}
@@ -886,14 +888,16 @@ def get_commune_entity_by_code(
     list_properties = tuple(query_columns)
     requested_fields = list(requested_fields)
     requested_fields.append(geometry)
-    # requested_fields = tuple(requested_fields)
     list_properties_sql = ", ".join(query_columns)
     list_properties = list(query_columns)
-
     params: dict = {"code": code}
+    if config.label == "commune":
+        type_filter = " AND type_commune IN ('COM', 'ARM')"
+    else:
+        type_filter = f"{config.type_filter_sql(params)}"
     sql = (
         f"SELECT {list_properties_sql} FROM communes "
-        f"WHERE code_insee = :code{config.type_filter_sql(params)}"
+        f"WHERE code_insee = :code{type_filter}"
     )
     result = db.execute(text(sql), params).fetchone()
 
@@ -943,7 +947,7 @@ def list_commune_entities(
     fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]] = None,
     boost: Optional[str] = None,
     limit: Optional[int] = None,
-    zone: Optional[str] = None,
+    zone: Optional[list[str]] = None,
     offset: int = 0,
     format: Optional[str] = None,
     geometry: Optional[str] = None,
@@ -971,17 +975,20 @@ def list_commune_entities(
     point = resolve_lat_lon_point(lat, lon)
     if point:
         lon_f, lat_f = point
-        return locate_commune_at_point(
-            db,
-            lon_f,
-            lat_f,
-            fields,
-            config,
-            nom_recherche=nom_recherche,
-            code_postal=code_postal,
-            code_departement=code_departement,
-            region=region,
-        )
+        # TODO: manage GeoJSON case return
+        return [
+            locate_commune_at_point(
+                db,
+                lon_f,
+                lat_f,
+                fields,
+                config,
+                nom_recherche=nom_recherche,
+                code_postal=code_postal,
+                code_departement=code_departement,
+                region=region,
+            )
+        ]
 
     boost_population = boost == "population"
     if boost and boost != "population":
@@ -1022,25 +1029,23 @@ def list_commune_entities(
     else:
         query += config.type_filter_sql(params)
 
+    if code_parent is not None:
+        params["code_parent"] = code_parent
+        query += " AND commune_parente = :code_parent"
     if nom_recherche is not None:
         query += nom_search_sql_clause(params, nom_recherche)
     if code_postal:
         query += " AND (',' || codes_postaux || ',') LIKE :code_postal_pattern"
         params["code_postal_pattern"] = f"%,{code_postal.strip()},%"
 
-    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
-        zones = [f"'{z.strip()}'" for z in zone.split(",")]
-        # query += f" AND zone IN (:zone)"
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone]):
+        zones = [f"'{z.strip()}'" for z in zone]
         query += f" AND zone IN ({','.join(zones)})"
-        # params['zone'] = f"{','.join(zones)}"
 
     use_parent = config.enrich_from_parent
     if code_departement:
-        query += commune_code_departement_sql(
-            params,
-            code_departement,
-            enrich_from_parent=use_parent,
-        )
+        params["code_departement"] = code_departement
+        query += " AND code_departement = :code_departement"
 
     if region:
         query += commune_code_region_sql(params, region, enrich_from_parent=use_parent)
@@ -1153,6 +1158,11 @@ def list_commune_entities(
             props["_score"] = (
                 match_score  # sérialisé via alias _score (schéma Pydantic)
             )
+        if props.get("associees") is not None:
+            props["associees"] = json.loads(props.get("associees"))
+        if props.get("deleguees") is not None:
+            props["deleguees"] = json.loads(props.get("deleguees"))
+
         if format is not None and format == "geojson":
             geom_content = props.pop(geometry)
             if isinstance(geom_content, str):
@@ -1273,7 +1283,7 @@ COMMUNE_LIST_PARAMS = {
         description="Liste des champs à inclure, séparés par des virgules",
     ),
     "zone": Query(
-        None,
+        ["metro", "drom", "com"],
         description="Filtrer par zone e.g metro, drom, com",
     ),
     "code": Query(

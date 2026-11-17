@@ -101,6 +101,8 @@ EPCI_LIST_PARAMS = {
     "nom": INTERCOMMUNALITE_LIST_PARAMS["nom"],
     "code": INTERCOMMUNALITE_LIST_PARAMS["code"],
     "fields": INTERCOMMUNALITE_LIST_PARAMS["fields"],
+    "codeDepartement": INTERCOMMUNALITE_LIST_PARAMS["codeDepartement"],
+    "codeRegion": INTERCOMMUNALITE_LIST_PARAMS["codeRegion"],
     "format": INTERCOMMUNALITE_LIST_PARAMS["format"],
     "geometry": INTERCOMMUNALITE_LIST_PARAMS["geometry"],
     "limit": INTERCOMMUNALITE_LIST_PARAMS["limit"],

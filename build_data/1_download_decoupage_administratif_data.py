@@ -312,6 +312,17 @@ def download_and_filter_communes():
         print("\n🔗 Step 3/3: Merging with postal codes...")
         df = df.merge(codes_postaux_df, on="COM", how="left")
         print("✓ Merge complete")
+
+        codes_postaux_plm = (
+            df[df["TYPECOM"] == "ARM"][["COMPARENT", "codes_postaux"]]
+            .groupby("COMPARENT")
+            .apply(lambda x: ",".join(sorted(set(x["codes_postaux"]))))
+            .reset_index()
+            .rename(columns={"COMPARENT": "COM", 0: "codes_postaux"})
+        )
+        df = df.merge(codes_postaux_plm, on="COM", how="left")
+        df["codes_postaux"] = df["codes_postaux_y"].fillna(df["codes_postaux_x"])
+        df = df.drop(["codes_postaux_x", "codes_postaux_y"], axis=1)
         print(
             f"  {df['codes_postaux'].notna().sum()} / {len(df)} entities have postal codes"
         )

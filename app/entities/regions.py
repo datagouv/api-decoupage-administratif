@@ -114,7 +114,7 @@ def list_region_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
-    zone: Optional[str] = None,
+    zone: Optional[list[str]] = None,
     code: Optional[str] = None,
     fields: Optional[list[str]] = None,
     format: Optional[str] = None,
@@ -141,8 +141,8 @@ def list_region_entities(
     if nom_query is not None and has_nom_recherche:
         query += nom_search_sql_clause(params, nom_query)
 
-    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
-        zones = [f"'{z.strip()}'" for z in zone.split(",")]
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone]):
+        zones = [f"'{z.strip()}'" for z in zone]
         query += f" AND zone IN ({','.join(zones)})"
 
     if code is not None:
@@ -249,7 +249,9 @@ class RegionGeometry(str, Enum):
 
 REGION_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
-    "zone": Query(None, description="Filtrer par zone e.g metro, drom, com"),
+    "zone": Query(
+        ["metro", "drom"], description="Filtrer par zone e.g metro, drom, com"
+    ),
     "code": Query(None, description="Recherche par code région"),
     "fields": Query(
         None,
