@@ -115,7 +115,7 @@ def list_departement_entities(
     db: Session,
     *,
     nom: Optional[str] = None,
-    zone: Optional[str] = None,
+    zone: Optional[list[str]] = None,
     code: Optional[str] = None,
     region: Optional[str] = None,
     fields: Optional[list[str]] = None,
@@ -140,8 +140,8 @@ def list_departement_entities(
     query = f"SELECT {list_properties_sql} FROM departements WHERE 1=1"
     params: dict = {}
 
-    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone.split(",")]):
-        zones = [f"'{z.strip()}'" for z in zone.split(",")]
+    if zone and all([z.strip() in ("metro", "drom", "com") for z in zone]):
+        zones = [f"'{z.strip()}'" for z in zone]
         query += f" AND zone IN ({','.join(zones)})"
 
     if nom_query is not None and has_nom_recherche:
@@ -275,7 +275,9 @@ class DepartementGeometry(str, Enum):
 
 DEPARTEMENT_LIST_PARAMS = {
     "nom": Query(None, description="Recherche par nom (partiel, normalisé)"),
-    "zone": Query(None, description="Filtrage par zone (metro, drom, com)"),
+    "zone": Query(
+        ["metro", "drom"], description="Filtrage par zone (metro, drom, com)"
+    ),
     "code": Query(None, description="Recherche par code département"),
     "codeRegion": Query(None, description="Filtrer par code région"),
     "fields": Query(

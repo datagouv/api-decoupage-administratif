@@ -570,6 +570,14 @@ INTERCOMMUNALITE_LIST_PARAMS = {
         None,
         description="Champs à inclure (centre, contour, bbox, surface, population, type, financement, membres_siren, codesDepartements, codesRegions)",
     ),
+    "codeDepartement": Query(
+        None,
+        description="Filtrer par code département (ex: 75, 2A, 972)",
+    ),
+    "codeRegion": Query(
+        None,
+        description="Filtrer par code région",
+    ),
     "format": Query(
         Format.json,
         description="Format de réponse attendu",
