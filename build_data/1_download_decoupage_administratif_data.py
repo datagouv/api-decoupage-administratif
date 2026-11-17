@@ -1079,14 +1079,14 @@ def download_and_prepare_aom(
 def download_decoupage_administratif_data(force_aom_download: bool = False):
     """Exécute l'ensemble des téléchargements et préparations."""
     download_and_filter_communes()
-    # download_departements()
-    # download_regions()
+    download_departements()
+    download_regions()
 
-    # interco_df = download_interco_list()
-    # members_df = download_interco_members()
-    # enrich_interco_with_communes(interco_df, members_df)
+    interco_df = download_interco_list()
+    members_df = download_interco_members()
+    enrich_interco_with_communes(interco_df, members_df)
 
-    # download_and_prepare_aom(force_download=force_aom_download)
+    download_and_prepare_aom(force_download=force_aom_download)
 
 
 if __name__ == "__main__":
