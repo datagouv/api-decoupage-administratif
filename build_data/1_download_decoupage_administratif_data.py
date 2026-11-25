@@ -173,7 +173,7 @@ def download_codes_postaux():
     print("\n📥 Downloading postal codes from La Poste...")
 
     try:
-        response = requests.get(LAPOSTE_URL, timeout=30, verify=False)
+        response = requests.get(LAPOSTE_URL, timeout=30)
         response.raise_for_status()
         print("✓ Download complete. Loading postal codes...")
     except Exception as e:

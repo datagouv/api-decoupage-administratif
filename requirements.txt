@@ -17,3 +17,4 @@ uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 
 py7zr
+fastapi-sqlalchemy-monitor==1.1.3

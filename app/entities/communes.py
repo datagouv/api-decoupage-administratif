@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, List, Literal, Optional
+from typing import Any, Callable, List, Literal, Optional, Type
 
 from fastapi import HTTPException, Query
-from shapely.geometry import Point, shape
+from shapely.geometry import Point
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -71,15 +71,27 @@ def locate_commune_at_point(
     db: Session,
     lon: float,
     lat: float,
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
+    fields: Optional[list[CommuneFieldType]],
     config: "CommunesEndpointConfig",
     *,
     nom_recherche: Optional[str] = None,
     code_postal: Optional[str] = None,
     code_departement: Optional[str] = None,
     region: Optional[str] = None,
+    format: Optional[str] = None,
+    geometry: Optional[str] = None,
 ) -> CommuneResponseSchema:
     """Commune la plus proche du point (contour si possible, sinon distance au polygone)."""
+    if format is not None and format == "geojson":
+        if geometry is None:
+            geometry = "centre"  # Can be contour, mairie, bbox or centre if defined
+        checkType: Type[CommuneFieldType]
+        if config.label == "commune":
+            checkType = CommuneField
+        else:
+            checkType = CommuneAssocieeDelegueeField
+        if getattr(checkType, geometry) not in fields:
+            fields.append(checkType(dict_apigeo[geometry]))
     list_properties, requested_fields, _ = resolve_commune_field_lists(fields, config)
     if "geometry_geojson" not in list_properties:
         list_properties.append("geometry_geojson")
@@ -171,6 +183,16 @@ def locate_commune_at_point(
         siren = nearest[siren_idx] if siren_idx is not None else None
         if siren:
             interco_by_siren, _ = load_interco_batch(db, [siren])
+    if format == "geojson":
+        return build_commune_geojson_feature(
+            nearest,
+            list_properties,
+            requested_fields,
+            db,
+            fields,
+            geom_for_centre=geometry,
+            config=config,
+        )
 
     return build_commune_properties(
         nearest,
@@ -205,11 +227,20 @@ dict_apigeo = {
     "surface": "surface",
     "associees": "associees",
     "deleguees": "deleguees",
+    "zone": "zone",
 }
 
 dict_apigeo_reverse = {v: k for k, v in dict_apigeo.items()}
 
-COMMUNE_MINIMAL_PROPERTIES = ["nom", "code_insee"]
+COMMUNE_MINIMAL_PROPERTIES = [
+    "nom",
+    "code_insee",
+    "code_departement",
+    "code_region",
+    "siren",
+    "siren_interco",
+    "codes_postaux",
+]
 COMMUNE_TYPE_COM = "COM"
 COMMUNE_TYPES_ASSOCIEE_DELEGUEE = ("COMA", "COMD")
 
@@ -297,7 +328,7 @@ ASSOCIEE_PARENT_NESTED_FIELDS = frozenset({"departement", "region", "epci"})
 
 
 def needs_associee_parent_enrich(
-    requested_fields: list[CommuneField] | list[CommuneAssocieeDelegueeField],
+    requested_fields: list[CommuneFieldType],
     fields_explicit: bool,
 ) -> bool:
     """True si l'enrichissement parent est nécessaire (codes ou objets imbriqués)."""
@@ -416,7 +447,7 @@ def commune_code_region_sql(
 
 
 def resolve_commune_field_lists(
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
+    fields: Optional[list[CommuneFieldType]],
     config: CommunesEndpointConfig = COMMUNES_CONFIG,
     *,
     allow_interco_competences: bool = False,
@@ -471,13 +502,14 @@ def resolve_commune_field_lists(
             list_properties.append(dict_apigeo[field])
 
     if (
-        "codeDepartement" in requested_fields
-        and "code_departement" not in list_properties
-    ):
+        "departement" in requested_fields or "codeDepartement" in requested_fields
+    ) and "code_departement" not in list_properties:
         list_properties.append("code_departement")
-    if "codeRegion" in requested_fields and "code_region" not in list_properties:
+    if (
+        "region" in requested_fields or "codeRegion" in requested_fields
+    ) and "code_region" not in list_properties:
         list_properties.append("code_region")
-    if "epci" in requested_fields:
+    if "epci" in requested_fields or "codeEpci" in requested_fields:
         if "siren_interco" not in list_properties:
             list_properties.append("siren_interco")
         if "nom_interco" not in list_properties:
@@ -497,24 +529,12 @@ def resolve_commune_field_lists(
     return list_properties, requested_fields, True
 
 
-def commune_centre_geometry(geom_geojson: Optional[str]):
-    """Point GeoJSON du centroïde à partir d'une géométrie stockée en base."""
-    raw_geom = parse_geometry(geom_geojson)
-    if not raw_geom:
-        return None
-    geom_shape = shape(raw_geom)
-    return {
-        "type": "Point",
-        "coordinates": [geom_shape.centroid.x, geom_shape.centroid.y],
-    }
-
-
 def build_commune_geojson_feature(
     result,
     list_properties: List[str],
     requested_fields: List[str],
     db: Session,
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
+    fields: Optional[list[CommuneFieldType]],
     geom_for_centre: Optional[str] = None,
     config: CommunesEndpointConfig = COMMUNES_CONFIG,
 ):
@@ -660,7 +680,7 @@ def build_commune_properties(
     list_properties: List[str],
     requested_fields: List[str],
     db: Session,
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
+    fields: Optional[list[CommuneFieldType]],
     *,
     dep_names: Optional[dict] = None,
     reg_names: Optional[dict] = None,
@@ -747,20 +767,6 @@ def build_commune_properties(
         if aom:
             properties[COMMUNE_AOM_FIELD] = aom
 
-    if fields:
-        if (
-            "departement" in requested_fields
-            and "codeDepartement" not in requested_fields
-        ):
-            properties.pop("codeDepartement", None)
-        if "region" in requested_fields and "codeRegion" not in requested_fields:
-            properties.pop("codeRegion", None)
-        if "epci" in requested_fields and "codeEpci" not in requested_fields:
-            properties.pop("codeEpci", None)
-
-    if "zone" in requested_fields and code_insee:
-        properties.pop("zone", None)
-
     if "geometry_geojson" in list_properties and (
         "centre" in requested_fields
         or "bbox" in requested_fields
@@ -768,30 +774,20 @@ def build_commune_properties(
     ):
         geometry = parse_geometry(result[list_properties.index("geometry_geojson")])
         if geometry:
-            geom_shape = shape(geometry)
-            centre_point = {
-                "type": "Point",
-                "coordinates": [geom_shape.centroid.x, geom_shape.centroid.y],
-            }
             if "centre" in requested_fields:
-                properties["centre"] = centre_point
+                properties["centre"] = parse_geometry(
+                    result[list_properties.index("centre_geojson")]
+                )
             if "bbox" in requested_fields:
-                minx, miny, maxx, maxy = geom_shape.bounds
-                properties["bbox"] = {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [minx, miny],
-                            [maxx, miny],
-                            [maxx, maxy],
-                            [minx, maxy],
-                            [minx, miny],
-                        ],
-                    ],
-                }
+                properties["bbox"] = parse_geometry(
+                    result[list_properties.index("bbox_geojson")]
+                )
             if "mairie" in requested_fields:
                 mairie = None
                 if "mairie_geojson" in list_properties:
+                    centre_point = parse_geometry(
+                        result[list_properties.index("centre_geojson")]
+                    )
                     mairie = parse_geometry(
                         result[list_properties.index("mairie_geojson")],
                     )
@@ -863,7 +859,7 @@ def build_commune_properties(
 
 def get_commune_entity_by_code(
     code: str,
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]],
+    fields: Optional[list[CommuneFieldType]],
     format: Literal["json", "geojson"],
     geometry: str,
     db: Session,
@@ -908,9 +904,8 @@ def get_commune_entity_by_code(
         )
 
     if format == "geojson":
-        row = result
         return build_commune_geojson_feature(
-            row,
+            result,
             list_properties,
             requested_fields,
             db,
@@ -944,7 +939,7 @@ def list_commune_entities(
     code_epci: Optional[str] = None,
     code_parent: Optional[str] = None,
     ancien_code: Optional[str] = None,
-    fields: Optional[list[CommuneField] | list[CommuneAssocieeDelegueeField]] = None,
+    fields: Optional[list[CommuneFieldType]] = None,
     boost: Optional[str] = None,
     limit: Optional[int] = None,
     zone: Optional[list[str]] = None,
@@ -957,11 +952,18 @@ def list_commune_entities(
     commune_codes: Optional[list[str]] = None,
     interco_code: Optional[str] = None,
 ):
+    checkType: Type[CommuneFieldType]
+    if config.label == "commune":
+        checkType = CommuneField
+    else:
+        checkType = CommuneAssocieeDelegueeField
+    if fields is None or len(fields) == 0:
+        fields = [checkType(dict_apigeo_reverse[i]) for i in config.default_properties]
     if format is not None and format == "geojson":
         if geometry is None:
             geometry = "centre"  # Can be contour, mairie, bbox or centre if defined
-        if getattr(CommuneField, geometry) not in fields:
-            fields.append(getattr(CommuneField, geometry))
+        if getattr(checkType, geometry) not in fields:
+            fields.append(getattr(checkType, geometry))
 
     nom_recherche = None
     if nom is not None:
@@ -975,20 +977,23 @@ def list_commune_entities(
     point = resolve_lat_lon_point(lat, lon)
     if point:
         lon_f, lat_f = point
-        # TODO: manage GeoJSON case return
-        return [
-            locate_commune_at_point(
-                db,
-                lon_f,
-                lat_f,
-                fields,
-                config,
-                nom_recherche=nom_recherche,
-                code_postal=code_postal,
-                code_departement=code_departement,
-                region=region,
-            )
-        ]
+        commune_at_point = locate_commune_at_point(
+            db,
+            lon_f,
+            lat_f,
+            fields,
+            config,
+            nom_recherche=nom_recherche,
+            code_postal=code_postal,
+            code_departement=code_departement,
+            region=region,
+            format=format,
+            geometry=geometry,
+        )
+        if format == "geojson":
+            return commune_at_point
+        else:
+            return [commune_at_point]
 
     boost_population = boost == "population"
     if boost and boost != "population":
@@ -1073,7 +1078,7 @@ def list_commune_entities(
         query += " LIMIT :candidate_limit"
         params["candidate_limit"] = NOM_SEARCH_CANDIDATE_LIMIT
     else:
-        query += " ORDER BY nom"
+        query += " ORDER BY code_insee"
         if offset:
             query += " OFFSET :offset"
             params["offset"] = offset
@@ -1229,9 +1234,41 @@ class CommuneAssocieeDelegueeField(str, Enum):
     region = "region"
 
 
+CommuneFieldType = CommuneField | CommuneAssocieeDelegueeField
+
+
 class CommuneType(str, Enum):
     commune_actuelle = "commune-actuelle"
     arrondissement_municipal = "arrondissement-municipal"
+
+
+def get_commune_fields(
+    fields: Optional[list[str]] = Query(default=None),
+    description="Liste des champs à inclure, séparés par des virgules",
+) -> Optional[list[CommuneFieldType]]:
+
+    if fields is None:
+        return []
+
+    valid_fields = {field.value: field for field in CommuneField}
+
+    return [valid_fields[field] for field in fields if field in valid_fields]
+
+
+def normalize_commune_fields(
+    fields: Optional[list[CommuneField]],
+) -> Optional[list[CommuneFieldType]]:
+    if fields is None:
+        return None
+    return list(fields)
+
+
+def normalize_commune_associees_deleguees_fields(
+    fields: Optional[list[CommuneAssocieeDelegueeField]],
+) -> Optional[list[CommuneFieldType]]:
+    if fields is None:
+        return None
+    return list(fields)
 
 
 COMMUNES_ASSOCIEES_FIELDS_PARAM = Query(

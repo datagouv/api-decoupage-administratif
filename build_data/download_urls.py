@@ -14,7 +14,7 @@ BANATIC_SIREN_URL = (
 BANATIC_INTERCO_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/6e05c448-62cc-4470-aa0f-4f31adea0bc4"
 )
-LAPOSTE_URL = "https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/data-files/019HexaSmal.csv"
+LAPOSTE_URL = "https://data.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/data-files/019HexaSmal.csv"
 # Lien vers un donnée 2025 mais pas de 2026 identique sur https://www.data.gouv.fr/datasets/base-nationale-sur-les-intercommunalites
 INTERCO_LIST_URL = (
     "https://www.data.gouv.fr/api/1/datasets/r/25571b3e-a5ce-4567-bfb4-650504644d7b"
