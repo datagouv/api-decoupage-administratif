@@ -3,15 +3,20 @@ API Géo 2 - FastAPI main application
 API pour accéder aux données des communes françaises
 """
 
-from typing import List, Literal, Optional, Union
+import cProfile
+import os
+from contextlib import asynccontextmanager
+from typing import Any, List, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi_sqlalchemy_monitor import SQLAlchemyMonitor
+from fastapi_sqlalchemy_monitor.action import PrintStatistics, WarnMaxTotalInvocation
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import engine, get_db
 from app.entities.aom import (
     AOM_LIST_PARAMS,
     get_aom_commune_codes,
@@ -28,7 +33,10 @@ from app.entities.communes import (
     CommuneGeometry,
     Format,
     get_commune_entity_by_code,
+    get_commune_fields,
     list_commune_entities,
+    normalize_commune_associees_deleguees_fields,
+    normalize_commune_fields,
     resolve_code_departement_filter,
 )
 from app.entities.departements import (
@@ -75,12 +83,47 @@ from app.schemas import (
     RegionResponseSchema,
 )
 
+
+def getenv_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).lower() in ("yes", "y", "true", "1", "t")
+
+
+profiling = getenv_bool("profiling", False)
+sqlalchemy_monitor = getenv_bool("profiling", False)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    yield
+
+    profiler.disable()
+    profiler.dump_stats("/tmp/output.pstats")
+
+
 # Create FastAPI app
-app = FastAPI(
-    title="API Découpage Administratif",
-    description="API pour accéder aux structures administratives territoriales françaises",
-    version="1.1.0",
-)
+app_params: dict[str, Any] = {
+    "title": "API Découpage Administratif",
+    "description": "API pour accéder aux structures administratives territoriales françaises",
+    "version": "1.1.0",
+}
+
+if profiling:
+    app_params["lifespan"] = lifespan
+
+app = FastAPI(**app_params)
+
+if sqlalchemy_monitor:
+    app.add_middleware(
+        SQLAlchemyMonitor,
+        engine=engine,
+        actions=[
+            WarnMaxTotalInvocation(max_invocations=10),  # Warn if too many queries
+            PrintStatistics(),  # Print statistics after each request
+        ],
+    )
 
 
 @app.middleware("http")
@@ -168,10 +211,7 @@ async def health_check(db: Session = Depends(get_db)):
 )
 async def get_commune_by_code(
     code: str,
-    fields: Optional[list[CommuneField]] = Query(
-        None,
-        description="Champs à inclure, séparés par des virgules (json et geojson)",
-    ),
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     geometry: Optional[str] = Query(
         "centre",
         description="Géométrie à utiliser pour la sortie géographique",
@@ -190,7 +230,7 @@ async def get_commune_by_code(
     try:
         return get_commune_entity_by_code(
             code,
-            fields,
+            normalize_commune_fields(fields),
             format,
             geometry,
             db,
@@ -221,7 +261,7 @@ async def list_communes(
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     zone: Optional[list[str]] = COMMUNE_LIST_PARAMS["zone"],
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
@@ -260,7 +300,7 @@ async def list_communes(
             code_parent=codeParent,
             ancien_code=ancienCode,
             zone=zone,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -314,7 +354,7 @@ async def get_commune_associee_deleguee_by_code(
     try:
         return get_commune_entity_by_code(
             code,
-            fields,
+            normalize_commune_associees_deleguees_fields(fields),
             format,
             geometry,
             db,
@@ -372,7 +412,7 @@ async def list_communes_associees_deleguees(
             code_departement=dep_code,
             code_parent=chefLieu,
             region=codeRegion,
-            fields=fields,
+            fields=normalize_commune_associees_deleguees_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -445,7 +485,7 @@ async def list_departement_communes(
     lon: Optional[float] = COMMUNE_LIST_PARAMS["lon"],
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -469,7 +509,7 @@ async def list_departement_communes(
             code_postal=codePostal,
             code_departement=code,
             region=codeRegion,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -614,7 +654,7 @@ async def list_region_communes(
     lon: Optional[float] = COMMUNE_LIST_PARAMS["lon"],
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -639,7 +679,7 @@ async def list_region_communes(
             code_postal=codePostal,
             code_departement=dep_code,
             region=code,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -744,7 +784,7 @@ async def list_epci_communes(
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -768,7 +808,7 @@ async def list_epci_communes(
             region=codeRegion,
             commune_codes=commune_codes,
             interco_code=code,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -869,7 +909,7 @@ async def list_groupement_communes(
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -894,7 +934,7 @@ async def list_groupement_communes(
             region=codeRegion,
             commune_codes=commune_codes,
             interco_code=code,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
@@ -998,7 +1038,7 @@ async def list_aom_communes(
     codePostal: Optional[str] = COMMUNE_LIST_PARAMS["codePostal"],
     codeDepartement: Optional[str] = COMMUNE_LIST_PARAMS["codeDepartement"],
     codeRegion: Optional[str] = COMMUNE_LIST_PARAMS["codeRegion"],
-    fields: Optional[list[CommuneField]] = COMMUNE_LIST_PARAMS["fields"],
+    fields: Optional[list[CommuneField]] = Depends(get_commune_fields),
     boost: Optional[str] = COMMUNE_LIST_PARAMS["boost"],
     limit: Optional[int] = COMMUNE_LIST_PARAMS["limit"],
     offset: int = COMMUNE_LIST_PARAMS["offset"],
@@ -1020,7 +1060,7 @@ async def list_aom_communes(
             code_departement=dep_code,
             region=codeRegion,
             commune_codes=commune_codes,
-            fields=fields,
+            fields=normalize_commune_fields(fields),
             boost=boost,
             limit=limit,
             offset=offset,
