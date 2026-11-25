@@ -1,10 +1,14 @@
+import csv
 import gzip
 import json
 from pathlib import Path
 from typing import TypedDict, cast
 
+import jsonschema
 import requests
 from deepdiff import DeepDiff
+from genson import SchemaBuilder
+from jsonschema import validate
 from slugify import slugify
 
 cache_file = "results-prod.json.gz"
@@ -16,6 +20,7 @@ class CacheEntry(TypedDict):
     response: str
     elapsed: str
     http_code: int
+    schema: str
 
 
 def flatten_comprehension(matrix):
@@ -31,33 +36,43 @@ def compare_json_deepdiff(json_1, json_2):
 
 cache: dict[str, CacheEntry]
 
+
+def call_original_api(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        print(url)
+        response_content = response.json()
+        builder = SchemaBuilder()
+        builder.add_object(response_content)
+        elapsed = response.elapsed
+        response_content_remote = json.dumps(
+            response_content, sort_keys=True, ensure_ascii=False
+        )
+        return {
+            "url": line,
+            "response": response_content_remote,
+            "elapsed": str(elapsed),
+            "http_code": response.status_code,
+            "schema": json.dumps(builder.to_schema()),
+        }
+    else:
+        print(f"no_200, {response.status_code}, {line}")
+        return None
+
+
 if not Path(cache_file).exists():
     cache = {}
     with open("urls_to_test.txt") as infile:
         content = [line.rstrip() for line in infile]
         for line in content:
-            response = requests.get(line)
-            if response.status_code == 200:
-                print(line)
-                response_content = response.json()
-                elapsed = response.elapsed
-                response_content_remote = json.dumps(
-                    response_content, sort_keys=True, ensure_ascii=False
-                )
-                cache[slugify(line)] = {
-                    "url": line,
-                    "response": response_content_remote,
-                    "elapsed": str(elapsed),
-                    "http_code": response.status_code,
-                }
-            else:
-                print(f"no_200, {response.status_code}, {line}")
+            result = call_original_api(line)
+            if result is not None:
+                cache[slugify(line)] = result
     with gzip.open(cache_file, "wt", encoding="UTF-8") as f:
         json.dump(cache, f, ensure_ascii=False)
 else:
     with gzip.open(cache_file, "rt", encoding="UTF-8") as zipfile:
         cache = cast(dict[str, CacheEntry], json.load(zipfile))
-        # cache = json.load(zipfile)
 
 errors: dict[str, list[dict]] = {
     "Response similar": [],
@@ -71,11 +86,16 @@ for k_cache, v_cache in cache.items():
     local_url = prod_url.replace("https://geo.api.gouv.fr", "http://localhost:8000")
     print(k_cache, local_url)
 
-"""
     response = requests.get(local_url)
+    elapsed_local = str(response.elapsed)
     if response.status_code == 200:
-        elapsed_local = str(response.elapsed)
         response_content_local = response.json()
+        try:
+            schema = json.loads(v_cache.get("schema"))
+            validate(instance=response_content_local, schema=schema)
+            print("JSON data is valid.")
+        except jsonschema.exceptions.ValidationError as e:
+            print(f"JSON data is invalid: {e.message}")
         response_content_local = json.dumps(
             response_content_local, sort_keys=True, ensure_ascii=False
         )
@@ -165,9 +185,6 @@ for k_cache, v_cache in cache.items():
             }
         )
 
-for k_error, v_error in errors.items():
-    print(k_error, len(v_error), v_error)
-
 errors_api_file_name_no_extension = "errors_api_file"
 with gzip.open(
     f"{errors_api_file_name_no_extension}.json.gz", "wt", encoding="UTF-8"
@@ -187,4 +204,3 @@ with open(f"{errors_api_file_name_no_extension}.csv", "w", newline="") as csvfil
     writer.writeheader()
     for k_error, v_error in errors.items():
         writer.writerows(v_error)
-"""
